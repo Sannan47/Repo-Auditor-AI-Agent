@@ -1,6 +1,7 @@
 """Conservative credential redaction shared by tools, traces, and reports."""
 
 import re
+import json
 
 
 _TOKEN_PATTERNS = (
@@ -23,6 +24,8 @@ _YAML_HEADER = re.compile(r"^(?P<indent>[ \t]*)[\"']?" + _SECRET_NAME + r"[\"']?
 _TRIPLE_QUOTED = re.compile(
     r"(?P<prefix>\b" + _SECRET_NAME + r"\b\s*=\s*)(?P<quote>\"\"\"|''')(?P<body>[\s\S]*?)(?P=quote)", re.I
 )
+_HCL_SECRET = re.compile(r'\bvariable[ \t]+"' + _SECRET_NAME + r'"[ \t\r\n]*\{', re.I)
+_HCL_DEFAULT = re.compile(r'''(?m)(\bdefault[ \t]*=[ \t]*)("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|[^\r\n]+)''')
 _ASSIGNMENT = re.compile(
     r"(?im)(\b" + _SECRET_NAME + r"\b[\"']?[ \t]*[:=][ \t]*)"
     r'''("(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^\r\n,;]+)'''
@@ -43,6 +46,65 @@ def _remember_multiline(value: str) -> None:
     protect_secret(value.strip())
     for line in value.splitlines():
         protect_secret(line.strip())
+
+
+def _block_end(text, start):
+    """Locate a HCL block end while ignoring quoted braces and comments."""
+    depth, quoted, index = 1, False, start
+    while index < len(text):
+        character = text[index]
+        if quoted:
+            if character == '\\':
+                index += 2
+                continue
+            if character == '"':
+                quoted = False
+        elif text.startswith('/*', index):
+            closing = text.find('*/', index + 2)
+            index = len(text) if closing < 0 else closing + 2
+            continue
+        elif character == '#' or text.startswith('//', index):
+            closing = text.find('\n', index)
+            index = len(text) if closing < 0 else closing + 1
+            continue
+        elif character == '"':
+            quoted = True
+        elif character == '{':
+            depth += 1
+        elif character == '}':
+            depth -= 1
+            if depth == 0:
+                return index
+        index += 1
+    return len(text)
+
+
+def _named_defaults(text):
+    output, previous = [], 0
+    for match in _HCL_SECRET.finditer(text):
+        if match.start() < previous:
+            continue
+        end = _block_end(text, match.end())
+        body = text[match.end():end]
+
+        def replace_default(value_match):
+            literal = value_match.group(2).strip()
+            if literal in {'""', "''"} or _PLACEHOLDER.fullmatch(literal):
+                return value_match.group(0)
+            if literal.startswith('"') and literal.endswith('"'):
+                try:
+                    _remember_multiline(json.loads(literal))
+                except (ValueError, TypeError):
+                    _remember_multiline(literal[1:-1])
+            else:
+                _remember_multiline(literal)
+            return value_match.group(1) + '[REDACTED: credential default]' + '\n' * value_match.group(2).count('\n')
+
+        output.append(text[previous:match.end()])
+        output.append(_HCL_DEFAULT.sub(replace_default, body))
+        previous = end
+    output.append(text[previous:])
+    return ''.join(output)
 
 
 def _multiline(text: str) -> str:
@@ -93,7 +155,7 @@ def redact(text: str) -> str:
         protect_secret(match.group(0))
         return "[REDACTED]" + "\n" * match.group(0).count("\n")
 
-    text = _multiline(text)
+    text = _multiline(_named_defaults(text))
     for pattern in _TOKEN_PATTERNS:
         text = pattern.sub(replace_token, text)
 

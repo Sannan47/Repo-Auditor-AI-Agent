@@ -85,3 +85,19 @@ class SafetyTests(RepositoryFixture, unittest.TestCase):
             result = self.tools.execute('git_log', {})
         self.assertFalse('ghp_' in result['history'])
         self.assertLessEqual(len(result['history']), MAX_OUTPUT_CHARS)
+
+    def test_terraform_password_default_is_redacted_before_pagination(self):
+        value = 'synthetic-hcl-credential'
+        content = 'variable "db_password" {\n  description = "Password with a quoted } brace"\n  default = "' + value + '"\n}\nvariable "region" {\n  default = "us-east-1"\n}\n'
+        (self.root / 'config.py').write_text(content)
+        result = self.tools.execute('read_file', {'path': 'config.py', 'start_line': 3, 'end_line': 3})
+        self.assertNotIn(value, str(result))
+        self.assertEqual(result['lines'][0]['line'], 3)
+        self.assertIn('credential default', result['lines'][0]['text'])
+        self.assertIn('default = "us-east-1"', redact(content))
+        self.assertNotIn(value, redact('Echo: ' + value))
+        self.assertEqual(len(redact(content).splitlines()), len(content.splitlines()))
+
+    def test_terraform_empty_and_environment_defaults_are_not_credentials(self):
+        content = 'variable "api_key" {\n  default = ""\n}\nvariable "secret" {\n  default = "${var.secret_from_environment}"\n}\n'
+        self.assertEqual(redact(content), content)

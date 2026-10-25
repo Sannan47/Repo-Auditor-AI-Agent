@@ -86,7 +86,7 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
             *submissions({"repository": URL, "violations": [finding()]}),
         ])
         self.assertEqual(report["violations"][0]["line"], 1)
-        self.assertIn("observed", str(provider.inputs[-1]))
+        self.assertTrue(any('observed' in str(messages) for messages in provider.inputs))
 
     def test_no_inspection_cannot_claim_clean(self):
         with self.assertRaises(AuditError):
@@ -123,7 +123,19 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
             assessed(), *submissions({'repository': URL, 'violations': []}),
         ])
         self.assertEqual(report['violations'], [])
-        self.assertIn('Coverage incomplete', str(provider.inputs[-1]))
+        self.assertTrue(any('Coverage incomplete' in str(messages) for messages in provider.inputs))
+
+    def test_final_review_uses_primary_evidence_without_first_pass_anchoring(self):
+        responses = inspections()
+        responses[0]['content'] = 'First pass conclusion that should not bias the reviewer'
+        responses += [call('submit_report', report={'repository': URL, 'violations': []}),
+                      call('submit_report', report={'repository': URL, 'violations': [finding()]})]
+        report, provider = self.run_script(responses)
+        review = provider.inputs[-1]
+        self.assertNotIn('First pass conclusion that should not bias the reviewer', str(review))
+        self.assertIn('source_observations', str(review))
+        self.assertIn('config.py', str(review))
+        self.assertEqual(len(report['violations']), 1)
 
 
 if __name__ == "__main__":

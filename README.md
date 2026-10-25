@@ -117,8 +117,10 @@ starts the loop, writes validated JSON, and cleans up the clone.
    to earlier inspection tool-call IDs. Reject listing-only conclusions, unread
    manifests/workflows, invented evidence IDs, and unsupported unavailable checks.
 7. Validate the candidate `submit_report` JSON and cited locations. Return invalid
-   reports for correction. Require a final LLM evidence review to challenge
-   unsupported claims, allow further tool calls, and then accept a reviewed report.
+   reports for correction. Start the final LLM review in a fresh context containing
+   primary tool observations and the provisional report, so it can challenge both
+   unsupported claims and omissions without inheriting the first pass's conclusions.
+   It may investigate further before submitting the final report.
 
 `tools.py` implements the four required tools:
 
@@ -204,7 +206,8 @@ The report contains exactly `repository` and `violations`. Every violation conta
   but cannot guarantee detection of every adversarial instruction or secret format.
   Tool outputs are redacted before reaching the provider, traces, or report.
   Whole-file redaction handles PEM private keys, YAML credential blocks, and
-  triple-quoted credentials before splitting text into numbered lines. Protocol
+  triple-quoted credentials and named Terraform secret-variable string defaults
+  before splitting text into numbered lines. Protocol
   keys and severity enum values are preserved, and sanitized reports are validated
   again before acceptance.
 - Detection quality depends on the model, inspected content, available context and

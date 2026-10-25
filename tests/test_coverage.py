@@ -103,3 +103,12 @@ class CoverageTests(RepositoryFixture, unittest.TestCase):
         self.assertIn('pyproject.toml', context['unread_manifests'])
         self.assertIn({'inspection_id': 'requirements', 'tool': 'read_file', 'path': 'requirements.txt',
                        'action': None, 'status': 'observed'}, context['evidence_index'])
+
+    def test_missing_citation_is_distinguished_from_missing_inspection(self):
+        self.observe('list_files', {}, 'listing')
+        self.observe('read_file', {'path': 'requirements.txt'}, 'requirements')
+        self.observe('read_file', {'path': 'pyproject.toml'}, 'project')
+        with self.assertRaises(AuditError) as caught:
+            self.coverage.record([self.assessment('dependency_management', ['requirements'])], 2)
+        self.assertIn("'project': 'pyproject.toml'", str(caught.exception))
+        self.assertIn('Actually unread: []', str(caught.exception))

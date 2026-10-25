@@ -132,7 +132,13 @@ class Coverage:
             elif expected and not reads.intersection(expected):
                 raise AuditError(f'{area}: read relevant artifact content before assessing this area: {expected[:8]}')
             elif area in {'dependency_management', 'ci'} and set(expected) - reads:
-                raise AuditError(f'{area}: inspect the remaining manifests/workflows before concluding: {sorted(set(expected) - reads)[:8]}')
+                missing = set(expected) - reads
+                available = {call_id: call['arguments'].get('path') for call_id, call in self.calls.items()
+                             if call['turn'] < turn and call['name'] == 'read_file'
+                             and call['arguments'].get('path') in missing and 'error' not in call['result']
+                             and (call['result'].get('lines') or call['result'].get('total_lines') == 0)}
+                unread = missing - set(available.values())
+                raise AuditError(f'{area}: cite all required manifests/workflows. Already inspected but missing from evidence_calls: {available}. Actually unread: {sorted(unread)[:8]}. Reuse the listed inspection IDs; do not reread files only to recover an ID.')
             elif self.paths and not reads:
                 raise AuditError(f'{area}: a listing or empty search alone is insufficient; inspect contextual content')
             proposed[area] = item
