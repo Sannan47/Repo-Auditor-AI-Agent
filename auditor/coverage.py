@@ -15,7 +15,7 @@ _MANIFESTS = {
     'build.gradle.kts', 'composer.json', 'packages.config', 'environment.yml',
     'environment.yaml', 'mix.exs', 'pubspec.yaml', 'deno.json', 'deno.jsonc',
 }
-_SOURCE_SUFFIXES = {'.py', '.js', '.ts', '.tsx', '.jsx', '.go', '.rs', '.java', '.cs', '.rb', '.php', '.sh'}
+_SOURCE_SUFFIXES = {'.py', '.js', '.ts', '.tsx', '.jsx', '.go', '.rs', '.java', '.cs', '.rb', '.php', '.sh', '.tf', '.hcl', '.c', '.cpp', '.kt', '.swift'}
 
 
 def anchors(area, paths):
@@ -27,14 +27,15 @@ def anchors(area, paths):
         workflow = path.startswith('.github/workflows/') and pure.suffix in {'.yml', '.yaml'}
         manifest = name in _MANIFESTS or name.startswith('requirements') and pure.suffix == '.txt' or pure.suffix in {'.csproj', '.fsproj'}
         source = pure.suffix.lower() in _SOURCE_SUFFIXES and not path.startswith(('tests/', 'test/'))
+        infrastructure = pure.suffix.lower() in {'.tf', '.tfvars', '.hcl'} or name.startswith(('dockerfile', 'docker-compose', 'compose.'))
         relevant = {
             'repository_hygiene': name.startswith('readme'),
             'dependency_management': manifest,
             'code_quality': source or name in {'.ruff.toml', 'ruff.toml', '.eslintrc.json', '.prettierrc'},
             'testing': workflow or path.startswith(('tests/', 'test/')),
             'ci': workflow or name in {'.gitlab-ci.yml', 'jenkinsfile', '.travis.yml', 'azure-pipelines.yml'},
-            'security': source or workflow or name in {'.env', '.env.example'},
-            'configuration': name in {'.env', '.env.example'} or 'config' in name or workflow,
+            'security': source or workflow or infrastructure or name in {'.env', '.env.example'},
+            'configuration': infrastructure or name in {'.env', '.env.example'} or 'config' in name or workflow,
             'collaboration': workflow or name in {'contributing.md', 'codeowners', 'pull_request_template.md'},
             'build_release': workflow or manifest or name in {'makefile', 'dockerfile', 'justfile'},
         }[area]

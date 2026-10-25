@@ -4,6 +4,7 @@ import json
 from pathlib import Path, PurePosixPath
 
 from auditor.repository import AuditError, git_command
+from auditor.github import read_action_metadata
 from auditor.safety import redact, sanitize
 
 
@@ -105,8 +106,11 @@ class InspectionTools:
         return {"history": history[:MAX_OUTPUT_CHARS], "scope": "Latest 30 commits from a shallow clone of at most 100 commits",
                 "truncated": len(history) > MAX_OUTPUT_CHARS}
 
+    def read_action_metadata(self, action: str) -> dict:
+        return read_action_metadata(action)
+
     def execute(self, name: str, arguments: dict) -> dict:
-        if name not in {"list_files", "read_file", "search_code", "git_log"}:
+        if name not in {"list_files", "read_file", "search_code", "git_log", "read_action_metadata"}:
             return {"error": "Unknown inspection tool"}
         try:
             return sanitize(getattr(self, name)(**arguments))

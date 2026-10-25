@@ -59,6 +59,8 @@ LLM_MODEL=gemini-3.1-flash-lite
 LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
 AGENT_MAX_ROUNDS=30
 LLM_TIMEOUT_SECONDS=60
+LLM_MAX_RETRIES=4
+LLM_RETRY_BASE_SECONDS=5
 ```
 
 The basic OpenAI Python SDK sends requests to Google's documented
@@ -126,8 +128,14 @@ starts the loop, writes validated JSON, and cleans up the clone.
 | `read_file(path)` | Returns numbered lines; optional `start_line`/`end_line` support follow-up reads. |
 | `search_code(pattern)` | Case-insensitive **literal substring** search, with file/line evidence and skipped-file metadata. |
 | `git_log()` | Latest 30 commit subjects/dates from a shallow clone of up to 100 commits. |
+| `read_action_metadata(action)` | Anonymous source inspection of public action metadata at the referenced revision; verifies version-dependent controls without executing the action. |
 
 `auditor/provider.py` handles only basic LLM requests and configuration.
+Transient 408/409/429/5xx and connection/timeouts use bounded exponential backoff
+with jitter, respecting valid Retry-After or Google RetryInfo delays up to 60
+seconds. Four retries are allowed by default; daily/zero quotas and nonretryable
+authentication/input errors fail promptly. Retry events are preserved in traces.
+Retries keep the existing investigation and do not repeat inspection tools.
 `auditor/report.py` validates the exact report contract, observed locations, and
 duplicate IDs/descriptions at a location. Semantic evidence interpretation and
 combining related root causes are the LLM's responsibilities, not guarantees of
@@ -183,7 +191,8 @@ The report contains exactly `repository` and `violations`. Every violation conta
   declared safe. Submodule contents and LFS payloads are not fetched.
 - At most eight tools per model turn and 30 model turns by default; the configurable
   maximum is 100. Budget exhaustion fails rather than inventing a successful report.
-  SDK requests have a configurable timeout and two retries for retryable failures.
+  SDK requests have a configurable per-attempt timeout and bounded provider retries.
+  The provider implements the retry policy above; nested SDK retries are disabled.
 - Repository content is explicitly treated as untrusted data, including instructions
   aimed at AI agents. Prompt defenses and heuristic credential redaction reduce risk
   but cannot guarantee detection of every adversarial instruction or secret format.

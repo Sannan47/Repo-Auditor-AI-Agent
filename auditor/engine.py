@@ -26,6 +26,8 @@ TOOL_DEFINITIONS = [
     function("search_code", "Search tracked text files using a case-insensitive LITERAL substring (not regex).", {
         "pattern": {"type": "string"}}, ("pattern",)),
     function("git_log", "Inspect latest 30 commit subjects from a shallow clone of up to 100 commits."),
+    function('read_action_metadata', 'Read public GitHub Action metadata at its actual ref. Use to verify version-specific protections such as checkout allow-unsafe-pr-checkout. Anonymous source read only; never executes the action.', {
+        'action': {'type': 'string', 'description': 'owner/repository[/action-path]@ref, preferably the exact workflow SHA'}}, ('action',)),
     function("record_assessments", "Record evidence-linked conclusions for the nine inspection areas; cite earlier inspection tool-call IDs. This tool never detects violations.", {
         "assessments": {"type": "array", "minItems": 1, "maxItems": 9, "items": {
             "type": "object", "properties": {
@@ -65,7 +67,12 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
     reviewing = False
     coverage = Coverage()
     for turn in range(1, max_rounds + 1):
-        message = provider.complete(messages, TOOL_DEFINITIONS)
+        try:
+            message = provider.complete(messages, TOOL_DEFINITIONS)
+        finally:
+            if hasattr(provider, 'drain_retry_events'):
+                for event in provider.drain_retry_events():
+                    trace.write('provider_retry', turn=turn, **event)
         if not isinstance(message, dict) or message.get("role") != "assistant":
             raise AuditError("LLM returned an invalid assistant message")
         calls = message.get("tool_calls") or []

@@ -101,6 +101,7 @@ jobs:
         with:
           repository: ${{ github.event.pull_request.head.repo.full_name }}
           ref: ${{ github.event.pull_request.head.sha }}
+          allow-unsafe-pr-checkout: true
       - run: python app.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

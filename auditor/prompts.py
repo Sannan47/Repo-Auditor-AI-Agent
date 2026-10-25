@@ -26,6 +26,8 @@ Investigate all applicable areas, with tools selected dynamically:
   insecure credential handling. Redacted values indicate a POSSIBLE credential;
   verify context and distinguish placeholders/environment references from real secrets.
 - Configuration: machine-specific paths, committed local settings, environment separation.
+  Inspect infrastructure-as-code, Terraform, Docker and Kubernetes definitions when
+  present: public access, privilege boundaries, credentials and environment isolation.
 - Collaboration: unsafe PR automation and review guidance where relevant.
 - Build/release: build validation, deployment gates and risky automation.
 
@@ -65,6 +67,14 @@ Inspect whether untrusted PR code is actually checked out/executed or unsafe inp
 crosses a trust boundary. Metadata-only labeling with quoted inputs can be safe.
 For a privileged PR-code execution finding, include the observed untrusted-head
 checkout/execution alongside the trigger and permissions in the evidence.
+Action behavior is version-dependent. Use read_action_metadata when an external
+action's current protections matter to a finding. Recent checkout releases include
+an allow-unsafe-pr-checkout input and block common fork-PR checkouts by default;
+verify the workflow's exact ref and opt-out before claiming confirmed privileged
+PR execution. Older pinned revisions and direct git/gh fetches can differ. If source
+metadata is unavailable, do not invent its behavior or a confirmed exploit. Do not
+infer remote event policies or branch protection from source files. Do not assert
+CVEs or runtime failures solely from an old-looking version tag.
 Review proposed findings for false positives before submitting.
 
 Coverage is required for ALL nine areas, even if there are no findings. After
