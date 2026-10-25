@@ -87,6 +87,31 @@ class ProviderTests(unittest.TestCase):
         with self.assertRaises(AuditError):
             _retry_delay(self.error(headers={'retry-after': '600'}), 0, 5)
 
+    def test_google_list_envelope_daily_quota_fails_without_sleeping(self):
+        error = self.error(body=[{'error': {'details': [
+            {'violations': [{'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaValue': '20'}]},
+            {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '74014s'},
+        ]}}])
+        provider = self.provider(error=error)
+        provider.max_retries = 4
+        with patch('auditor.provider.time.sleep') as sleep, self.assertRaisesRegex(AuditError, 'daily or zero project quota'):
+            provider.complete([], [])
+        sleep.assert_not_called()
+        self.assertEqual(provider.client.chat.completions.create.call_count, 1)
+
+    def test_google_list_envelope_transient_retry_info_is_honored(self):
+        error = self.error(body=[{'error': {'details': [
+            {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '3s'},
+        ]}}])
+        self.assertEqual(_retry_delay(error, 0, 5), 3)
+
+    def test_malformed_quota_metadata_is_bounded(self):
+        cyclic = []
+        cyclic.append(cyclic)
+        provider = self.provider(error=self.error(body=cyclic))
+        with self.assertRaisesRegex(AuditError, 'HTTP 429'):
+            provider.complete([], [])
+
 
 if __name__ == "__main__":
     unittest.main()

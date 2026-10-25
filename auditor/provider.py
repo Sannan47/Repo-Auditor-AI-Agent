@@ -41,10 +41,24 @@ class Settings:
 
 def _details(exc):
     body = getattr(exc, 'body', None)
-    if not isinstance(body, dict):
-        return []
-    error = body.get('error', body)
-    return error.get('details', []) if isinstance(error, dict) and isinstance(error.get('details', []), list) else []
+    # Gemini's compatibility endpoint also returns a list of error envelopes.
+    # Bound traversal: provider responses are untrusted, and only structured
+    # quota/retry metadata is needed here (never echo response messages).
+    pending, details, visited = [(body, 0)], [], 0
+    while pending and visited < 100:
+        value, depth = pending.pop()
+        visited += 1
+        if depth > 8:
+            continue
+        if isinstance(value, list):
+            pending.extend((item, depth + 1) for item in value[:100])
+        elif isinstance(value, dict):
+            entries = value.get('details')
+            if isinstance(entries, list):
+                details.extend(item for item in entries[:100] if isinstance(item, dict))
+            if 'error' in value:
+                pending.append((value['error'], depth + 1))
+    return details
 
 
 def _quota_is_permanent(exc):

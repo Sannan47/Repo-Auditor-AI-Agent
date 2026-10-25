@@ -1,5 +1,11 @@
 # Assignment requirement verification
 
+**Current validation status:** [PUBLIC_VALIDATION.md](PUBLIC_VALIDATION.md)
+records two real vulnerable-repository audits. Their artifact checks passed but
+their semantic detection checks failed. Stronger-model reruns exhausted API daily
+quota. The implementation matrix below is not a claim of submission readiness;
+saved fixture metrics refer to an earlier fixture revision.
+
 Reviewed against all three pages of the local Assignment 2 handout after the
 secret-redaction and investigation-coverage fixes. The PDF and private `.env`
 remain local, ignored files. This matrix documents verification; the executable

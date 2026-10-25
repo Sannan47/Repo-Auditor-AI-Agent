@@ -220,6 +220,13 @@ The report contains exactly `repository` and `violations`. Every violation conta
 
 ## Tests
 
+See [PUBLIC_VALIDATION.md](PUBLIC_VALIDATION.md) for the latest real-repository
+results. Two vulnerable-repository runs completed their evidence and JSON checks
+but produced misses and unsupported findings with the default Flash-Lite model.
+Stronger-model reruns were blocked by API daily quota. The project has not passed
+semantic validation on those targets; the historical fixture results below do
+not override that finding.
+
 ```bash
 python -m unittest discover -s tests -v
 ```
