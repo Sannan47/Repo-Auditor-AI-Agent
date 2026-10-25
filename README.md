@@ -55,7 +55,7 @@ cp .env.example .env
 Set `LLM_API_KEY` in `.env`. The other supplied settings are:
 
 ```dotenv
-LLM_MODEL=gemini-3.8-flash
+LLM_MODEL=gemini-3.1-flash-lite
 LLM_BASE_URL=https://generativelanguage.googleapis.com/v1beta/openai/
 AGENT_MAX_ROUNDS=30
 LLM_TIMEOUT_SECONDS=60
@@ -66,6 +66,10 @@ The basic OpenAI Python SDK sends requests to Google's documented
 This is a provider SDK, not an agent framework. No OpenAI account or key is needed
 for this Gemini configuration. The endpoint and model are configurable; use a
 model that supports Chat Completions function calls.
+
+Gemini 3.1 Flash-Lite is the tested default. During integration, the newer 3.8 Flash
+model returned service errors and 2.5 Flash was unavailable to a new API project;
+the default therefore follows actual successful API access, not model-list metadata.
 
 Environment variables override `.env`. Only the `.env` beside `agent.py` is loaded;
 the target repository's environment files are never loaded. `.env`, virtual
@@ -107,8 +111,9 @@ starts the loop, writes validated JSON, and cleans up the clone.
 3. Dispatch only allowlisted tools with validated arguments.
 4. Return sanitized outputs or explicit errors to the LLM.
 5. Let the LLM select follow-up investigations.
-6. Accept `submit_report` after inspection and validate its JSON and cited locations.
-   Invalid reports are returned to the model for correction.
+6. Validate the candidate `submit_report` JSON and cited locations. Return invalid
+   reports for correction. Require a final LLM evidence review to challenge
+   unsupported claims, allow further tool calls, and then accept a reviewed report.
 
 `tools.py` implements the four required tools:
 
@@ -180,3 +185,25 @@ Tests run without real API credentials. They exercise actual local Git fixtures 
 a scripted provider for deterministic loop checks. Scripted responses test orchestration,
 not LLM detection quality; real model audits must be checked separately. CI executes
 the suite on Python 3.12 and 3.13 using read-only permissions and pinned Actions.
+
+## Authentic sample
+
+`sample_report.json` is unedited output from a real Gemini 3.1 Flash-Lite audit on
+October 25, 2026:
+
+```bash
+python agent.py --repo https://github.com/Sannan47/Repo-Auditor-AI-Agent --output sample_report.json
+```
+
+The inspected repository commit was
+`a9d5d53c8d05ddc9d536f19ad0411c6b3090ae21`. The run completed in 14 model turns,
+including follow-up inspections and final evidence review. The resulting violations
+array is empty. This records that run's conclusions, not a guarantee that the
+repository is defect-free. `examples/sample_trace.jsonl` preserves its actual
+sanitized decisions and tool outputs, including the target commit. Repeating the
+command audits the current default branch, so content and findings can differ.
+
+A separate live check used a temporary synthetic Git repository whose CI test step
+had `continue-on-error: true`. The agent identified that ineffective test gate and
+retained the finding after review. These limited live checks do not estimate
+precision or recall on the instructor's hidden repositories.

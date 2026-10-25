@@ -8,6 +8,7 @@ _TOKEN_PATTERNS = (
     re.compile(r"\b(?:AKIA|ASIA)[A-Z0-9]{16}\b"),
     re.compile(r"\bsk-(?:proj-|ant-)?[A-Za-z0-9_-]{16,}\b"),
     re.compile(r"\bAIza[A-Za-z0-9_-]{30,}\b"),
+    re.compile(r"\bAQ\.[A-Za-z0-9_.-]{20,}"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{12,}\b"),
     re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\Z)"),
     re.compile(r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@"),
@@ -58,10 +59,27 @@ def redact(text: str) -> str:
 
 
 def sanitize(value):
-    if isinstance(value, str):
-        return redact(value)
-    if isinstance(value, list):
-        return [sanitize(item) for item in value]
-    if isinstance(value, dict):
-        return {redact(str(key)): sanitize(item) for key, item in value.items()}
-    return value
+    # Discover credentials throughout a response before rendering it: an earlier
+    # line may echo a password whose assignment appears later in the same file.
+    def visit(item):
+        if isinstance(item, str):
+            redact(item)
+        elif isinstance(item, list):
+            for child in item:
+                visit(child)
+        elif isinstance(item, dict):
+            for key, child in item.items():
+                redact(str(key))
+                visit(child)
+
+    def render(item):
+        if isinstance(item, str):
+            return redact(item)
+        if isinstance(item, list):
+            return [render(child) for child in item]
+        if isinstance(item, dict):
+            return {redact(str(key)): render(child) for key, child in item.items()}
+        return item
+
+    visit(value)
+    return render(value)

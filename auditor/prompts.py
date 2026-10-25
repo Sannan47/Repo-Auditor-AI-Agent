@@ -47,10 +47,30 @@ File findings must cite a file actually inspected; cite the most relevant observ
 Use null file/line for genuinely repository-level absence, not nonexistent filenames.
 Combine repeated instances of the same root cause and avoid duplicate findings.
 Distinguish an exploitable defect from a stylistic preference or optional improvement.
+For injection claims, trace an actual untrusted input to a dangerous sink. A subprocess
+argument list with shell disabled is not shell injection by itself. Controlled command
+arguments and validated URLs are not vulnerabilities merely because future callers
+could hypothetically use them incorrectly. Cite the demonstrated unsafe behavior.
 Review proposed findings for false positives before submitting.
 
 Use submit_report alone in a turn, only after interpreting all preceding tool results.
 An empty violations array is correct when no defensible issues are found after an
 actual investigation. Your report must match the provided schema exactly. If validation
 rejects the report, fix it or investigate further. No interactive questions are allowed.
+"""
+
+REVIEW_PROMPT = """Your candidate report now needs a final evidence review. Challenge
+each finding independently against the tool observations before final submission:
+1. Is there a concrete current violation, or just an optional improvement/hypothetical?
+2. Does the cited file/line actually support the claim? Inspect surrounding context,
+   callers, alternative configs and scripts if needed.
+3. For a security issue, can you demonstrate the trust boundary and unsafe data flow?
+   Safe argument-list subprocess calls alone are not injection; redaction alone is
+   not proof of a real credential; permissions must be judged in workflow context.
+4. Could an acceptable alternative explain the apparent absence or suspicious pattern?
+5. Is severity justified by actual impact, and is remediation necessary and specific?
+Remove unsupported findings, combine duplicate root causes, and retain every
+well-supported violation. You may call tools for further evidence. Submit the revised
+report with submit_report; an empty array is appropriate if all candidates fail review.
+Do not invent new findings to replace rejected ones. Never reproduce secret values.
 """

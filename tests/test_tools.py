@@ -40,6 +40,18 @@ class ToolTests(RepositoryFixture, unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIn("error", self.tools.execute("read_file", {"path": path}))
 
+    def test_symlink_cannot_escape_repository(self):
+        with tempfile.TemporaryDirectory() as outside:
+            secret = Path(outside) / "private.txt"
+            secret.write_text("outside repository content", encoding="utf-8")
+            try:
+                (self.root / "link.txt").symlink_to(secret)
+            except OSError:
+                self.skipTest("Creating symbolic links requires host privileges")
+            result = self.tools.execute("read_file", {"path": "link.txt"})
+            self.assertIn("error", result)
+            self.assertNotIn("outside repository content", str(result))
+
     def test_invalid_arguments_and_unknown_tool(self):
         self.assertIn("error", self.tools.execute("read_file", {"path": "README.md", "start_line": 0}))
         self.assertIn("error", self.tools.execute("search_code", {"pattern": ""}))
@@ -70,6 +82,11 @@ class ToolTests(RepositoryFixture, unittest.TestCase):
     def test_environment_references_are_not_credentials(self):
         text = 'password = os.getenv("DB_PASSWORD")\napi_key: ${API_KEY}\n'
         self.assertEqual(redact(text), text)
+
+    def test_echo_before_assignment_is_redacted(self):
+        (self.root / "config.py").write_text('print("fictional-secret-echo")\npassword = "fictional-secret-echo"\n', encoding="utf-8")
+        result = self.tools.execute("read_file", {"path": "config.py"})
+        self.assertNotIn("fictional-secret-echo", str(result))
 
     def test_git_history_and_repository_unchanged(self):
         subprocess.run(["git", "-C", str(self.root), "-c", "user.name=Test Fixture",

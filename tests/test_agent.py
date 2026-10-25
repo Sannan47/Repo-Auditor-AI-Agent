@@ -24,6 +24,11 @@ def finding(**overrides):
             "recommendation": "Read the password from the environment", **overrides}
 
 
+def submissions(report):
+    # Initial candidate followed by the provider's final reviewed report.
+    return [call("submit_report", report=report), call("submit_report", report=report)]
+
+
 class ScriptedProvider:
     def __init__(self, responses):
         self.responses = iter(responses)
@@ -45,7 +50,7 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
         report, provider = self.run_script([
             call("list_files"), call("search_code", pattern="password"),
             call("read_file", path="config.py"),
-            call("submit_report", report={"repository": URL, "violations": [finding()]}),
+            *submissions({"repository": URL, "violations": [finding()]}),
         ])
         self.assertEqual(len(report["violations"]), 1)
         tool_messages = [m for m in provider.inputs[2] if m["role"] == "tool"]
@@ -56,14 +61,14 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
 
     def test_empty_report_is_valid_after_inspection(self):
         report, _ = self.run_script([call("list_files"), call("read_file", path="README.md"),
-            call("submit_report", report={"repository": URL, "violations": []})])
+            *submissions({"repository": URL, "violations": []})])
         self.assertEqual(report["violations"], [])
 
     def test_bad_report_is_returned_for_correction(self):
         report, provider = self.run_script([
             call("list_files"), call("read_file", path="config.py"),
             call("submit_report", report={"repository": URL, "violations": [finding(line=999)]}),
-            call("submit_report", report={"repository": URL, "violations": [finding()]}),
+            *submissions({"repository": URL, "violations": [finding()]}),
         ])
         self.assertEqual(report["violations"][0]["line"], 1)
         self.assertIn("observed", str(provider.inputs[-1]))
@@ -74,7 +79,7 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
 
     def test_tool_error_is_available_for_follow_up(self):
         _, provider = self.run_script([call("read_file", path="missing"), call("list_files"),
-            call("submit_report", report={"repository": URL, "violations": []})])
+            *submissions({"repository": URL, "violations": []})])
         self.assertIn("does not exist", str(provider.inputs[1]))
 
     def test_report_contract_and_duplicates(self):
@@ -84,6 +89,13 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
         for bad in (finding(severity="urgent"), finding(file="unseen.py"), finding(line=True), finding(extra="x")):
             with self.subTest(bad=bad), self.assertRaises(AuditError):
                 validate_report({"repository": URL, "violations": [bad]}, URL, self.tools)
+
+    def test_review_can_reject_a_candidate(self):
+        report, provider = self.run_script([call("read_file", path="config.py"),
+            call("submit_report", report={"repository": URL, "violations": [finding()]}),
+            call("submit_report", report={"repository": URL, "violations": []})])
+        self.assertEqual(report["violations"], [])
+        self.assertIn("review_required", str(provider.inputs[-1]))
 
 
 if __name__ == "__main__":

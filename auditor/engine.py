@@ -3,7 +3,7 @@
 import json
 from pathlib import Path
 
-from auditor.prompts import SYSTEM_PROMPT
+from auditor.prompts import REVIEW_PROMPT, SYSTEM_PROMPT
 from auditor.report import REPORT_SCHEMA, validate_report
 from auditor.repository import AuditError
 from auditor.safety import sanitize
@@ -53,6 +53,7 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
         {"role": "user", "content": f"Audit {repository}. You have at most {max_rounds} model turns. Investigate now."},
     ]
     successful_inspections = 0
+    reviewing = False
     for turn in range(1, max_rounds + 1):
         message = provider.complete(messages, TOOL_DEFINITIONS)
         if not isinstance(message, dict) or message.get("role") != "assistant":
@@ -83,11 +84,17 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
                     if set(arguments) != {"report"}:
                         raise AuditError("submit_report expects exactly report and reason")
                     report = validate_report(arguments["report"], repository, tools)
-                    trace.write("completed", turn=turn, reason=reason, report=report)
-                    return report
-                result = tools.execute(name, arguments)
-                if "error" not in result:
-                    successful_inspections += 1
+                    if reviewing:
+                        trace.write("completed", turn=turn, reason=reason, report=report)
+                        return report
+                    reviewing = True
+                    trace.write("candidate_report", turn=turn, report=report)
+                    result = {"status": "review_required", "candidate_report": report,
+                              "instructions": REVIEW_PROMPT}
+                else:
+                    result = tools.execute(name, arguments)
+                    if "error" not in result:
+                        successful_inspections += 1
             except (KeyError, TypeError) as exc:
                 raise AuditError("LLM returned a malformed tool call") from exc
             except (ValueError, AuditError) as exc:

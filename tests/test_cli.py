@@ -11,6 +11,7 @@ from unittest.mock import patch
 import agent
 from auditor.provider import Settings
 from auditor.repository import AuditError, git_command
+from test_agent import ScriptedProvider, call, submissions
 
 
 class CLITests(unittest.TestCase):
@@ -50,6 +51,31 @@ class CLITests(unittest.TestCase):
             report = {"repository": "https://github.com/example/demo", "violations": []}
             agent.write_report(path, report)
             self.assertEqual(json.loads(path.read_text()), report)
+
+    def test_full_cli_flow_and_trace_without_network(self):
+        url = "https://github.com/example/demo"
+        provider = ScriptedProvider([call("list_files"), call("read_file", path="README.md"),
+            *submissions({"repository": url, "violations": []})])
+
+        def fake_clone(repository, destination):
+            destination.mkdir()
+            subprocess.run(["git", "init", "--quiet", str(destination)], check=True)
+            (destination / "README.md").write_text("# Healthy fixture\n", encoding="utf-8")
+            subprocess.run(["git", "-C", str(destination), "add", "."], check=True)
+            subprocess.run(["git", "-C", str(destination), "-c", "user.name=Fixture",
+                            "-c", "user.email=fixture@example.invalid", "commit", "-qm", "Fixture"], check=True)
+
+        with tempfile.TemporaryDirectory() as work:
+            output = Path(work) / "report.json"
+            with patch("agent.clone_repository", side_effect=fake_clone), \
+                 patch("agent.OpenAICompatibleProvider", return_value=provider), \
+                 patch("agent.Settings.from_environment", return_value=Settings("test-key", "test-model")), \
+                 contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(agent.main(["--repo", url, "--output", str(output)]), 0)
+            self.assertEqual(json.loads(output.read_text()), {"repository": url, "violations": []})
+            trace = [json.loads(line) for line in Path(str(output) + ".trace.jsonl").read_text().splitlines()]
+            self.assertEqual(trace[1]["event"], "repository_snapshot")
+            self.assertEqual(trace[-1]["event"], "completed")
 
 
 if __name__ == "__main__":
