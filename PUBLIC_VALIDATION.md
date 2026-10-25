@@ -45,6 +45,17 @@ Raw local attempts remain under the ignored `tmp/` directory:
 `public-baseline`, `vulnerable-bulk-final`, and `vulnerable-gemini36`. Rejected
 reports have not replaced the authentic historical sample report.
 
+Additional requested model checks on the same day:
+
+- `gemini-2.0-flash` returned HTTP 404; it was not configured as the default.
+- `gemini-3.8-flash` failed a short request without an HTTP response, then returned
+  HTTP 503 on a second check with a 60-second timeout.
+- `gemini-3-flash-preview` answered a minimal request and was used for both exact
+  CLI audits (`tmp/vulnerable-gemini3`). GitHub Actions Goat failed at turn 4 after
+  five HTTP 503 attempts. TerraGoat reached turn 7, then failed on explicit daily
+  or zero project quota. Neither attempt produced a completed report. These
+  checks therefore do not establish reliable audit availability for either model.
+
 Before calling the project ready, rerun both targets with sufficient API quota
 and a model that demonstrates reliable evidence interpretation, review every
 finding and the known omissions, and rerun the synthetic evaluation on the current
