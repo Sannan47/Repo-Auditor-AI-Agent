@@ -1,0 +1,21 @@
+# Assignment handout (local reference only)
+/Assignment_2_DevOps_Repository_Auditing_Agent_Updated.pdf
+
+# Credentials and local environments
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+
+# Python and generated audit artifacts
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+build/
+dist/
+/report.json
+*.trace.jsonl
+/tmp/
