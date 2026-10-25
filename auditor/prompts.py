@@ -91,6 +91,13 @@ verified advisory and affected version, not a vague assertion that old versions
 are insecure. If that verification is unavailable, do not invent it.
 Review proposed findings for false positives before submitting.
 
+Apply precise execution semantics. With pull_request_target, actions/checkout
+without an explicit PR-head ref checks out the base repository's DEFAULT branch, not PR
+head code. The trigger plus a default checkout does not establish PR execution.
+git config user.name/user.email sets commit attribution, not authentication.
+An outbound HTTP request without sensitive data in its request is not, by itself,
+credential exfiltration. Show the actual data flow before making that claim.
+
 Coverage is required for ALL nine areas, even if there are no findings. After
 interpreting inspections, use record_assessments with status checked,
 not_applicable, or unavailable, a concrete conclusion, and earlier tool-call IDs.
@@ -138,6 +145,12 @@ rights; do not infer remote branch protection or event policies. Verify external
 action behavior using read_action_metadata when version-specific protections matter.
 Comments alone and old-looking dependency versions are not vulnerability evidence.
 Do not invent CVEs, secure/unsafe defaults, or results of unavailable checks.
+For pull_request_target, a default actions/checkout without a PR-head ref checks
+out the base repository's default branch; it does not execute untrusted PR code. A git user.email/name
+is commit attribution, not a login credential. Outbound HTTP traffic without
+sensitive request data is not, by itself, secret exfiltration. Cite actual data
+flow and declared grants. An unknown remote permission/review policy cannot be
+treated as an observed unsafe setting.
 
 Scope is software engineering and DevOps: hygiene, dependencies, code quality,
 testing, CI, security, configuration, collaboration and build/release. Exclude ML

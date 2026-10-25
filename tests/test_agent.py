@@ -139,6 +139,26 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
         submit = next(tool for tool in provider.definitions[-1] if tool['function']['name'] == 'submit_report')
         self.assertEqual(set(submit['function']['parameters']['required']), {'repository', 'violations', 'reason'})
 
+    def test_encoded_container_arguments_are_decoded_once_and_checked(self):
+        record = assessed()
+        args = json.loads(record['tool_calls'][0]['function']['arguments'])
+        args['assessments'] = json.dumps(args['assessments'])
+        record['tool_calls'][0]['function']['arguments'] = json.dumps(args)
+        report, provider = self.run_script([*inspections()[:3], record,
+            call('submit_report', repository=URL, violations='"not an array"'),
+            call('submit_report', repository=URL, violations=json.dumps([finding(line=999)])),
+            call('submit_report', repository=URL, violations=json.dumps([finding()])),
+            call('submit_report', repository=URL, violations=json.dumps([finding()]))])
+        self.assertEqual(report['violations'][0]['line'], 1)
+        self.assertTrue(any('must be a JSON array' in str(messages) for messages in provider.inputs))
+        self.assertTrue(any('observed' in str(messages) for messages in provider.inputs))
+
+    def test_completed_coverage_is_not_offered_again_during_review(self):
+        _, provider = self.run_script([*inspections(), *submissions({'repository': URL, 'violations': []})])
+        names = {tool['function']['name'] for tool in provider.definitions[-1]}
+        self.assertNotIn('record_assessments', names)
+        self.assertIn('submit_report', names)
+
     def test_no_inspection_cannot_claim_clean(self):
         with self.assertRaises(AuditError):
             self.run_script([call("submit_report", report={"repository": URL, "violations": []})], rounds=1)

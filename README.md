@@ -280,14 +280,21 @@ interpreting those small-fixture metrics.
 
 ## Authentic sample
 
-For an interrupted evaluation, `scripts/resume_evaluation.py --trace OLD.trace.jsonl
---output NEW.json` can conserve API requests. It re-clones the same URL, refuses a
-changed commit or model, replays saved model decisions through the first
-submission, and actually reruns inspection tools. Their primary outputs must match
-the saved observations. Further decisions come from the live model under the same
-turn limit. The new trace marks the replay explicitly. This opt-in evaluation
-helper does not replace the required unattended `agent.py` command or turn an
-unfinished trace into a completed report.
+For an interrupted evaluation, this opt-in helper can conserve API requests:
+
+```bash
+python scripts/resume_evaluation.py --trace OLD.trace.jsonl --output NEW.json
+```
+
+It re-clones the same URL, refuses a changed commit or model by default, and
+replays saved model decisions through the first accepted candidate (or first
+submission attempt). Inspection tools actually run again and their primary outputs
+must match the saved observations. Independent final review always uses live model
+calls under the same turn limit. The new trace marks the replay explicitly. This
+does not replace the required unattended `agent.py` command or turn an unfinished
+trace into a completed report.
+Use `--allow-model-change` only when intentionally continuing with a different
+configured model; the trace records both original and continuation model IDs.
 
 `sample_report.json` is unedited output from a real Gemini 3.1 Flash-Lite audit on
 October 25, 2026:

@@ -50,7 +50,7 @@ def available_tools(coverage, repository=None):
         ready = True
     except AuditError:
         ready = False
-    eligible = list(AREAS) if ready else coverage.eligible_areas()
+    eligible = [] if ready else coverage.eligible_areas()
     definitions = []
     for definition in TOOL_DEFINITIONS:
         name = definition['function']['name']
@@ -120,6 +120,18 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
                 arguments = json.loads(call["function"]["arguments"])
                 if not isinstance(arguments, dict):
                     raise ValueError("Tool arguments must be a JSON object")
+                schema = next(item['function']['parameters'] for item in definitions if item['function']['name'] == name)
+                for key, value in list(arguments.items()):
+                    expected = schema['properties'].get(key, {}).get('type')
+                    if expected in ('array', 'object') and isinstance(value, str):
+                        try:
+                            decoded = json.loads(value)
+                        except (ValueError, RecursionError) as exc:
+                            raise AuditError(f'{name}.{key} must be a JSON {expected}; do not encode it as a string') from exc
+                        container = list if expected == 'array' else dict
+                        if not isinstance(decoded, container):
+                            raise AuditError(f'{name}.{key} must be a JSON {expected}')
+                        arguments[key] = decoded
                 reason = arguments.pop("reason", "")
                 if not isinstance(reason, str) or not reason.strip():
                     raise ValueError("Each tool call must explain its purpose in reason")
