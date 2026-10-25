@@ -102,6 +102,26 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
         self.assertTrue(any(URL in error and 'full inspected GitHub URL' in error for error in errors))
         self.assertEqual(report['repository'], URL)
 
+    def test_double_encoded_report_is_decoded_then_fully_validated(self):
+        report, provider = self.run_script([
+            *inspections(),
+            call('submit_report', report=json.dumps({'repository': URL, 'violations': [finding(line=999)]})),
+            *submissions(json.dumps({'repository': URL, 'violations': [finding()]})),
+        ])
+        self.assertEqual(report['violations'][0]['line'], 1)
+        self.assertTrue(any('observed' in str(messages) for messages in provider.inputs))
+
+    def test_invalid_encoded_report_can_recover_without_schema_relaxation(self):
+        report, provider = self.run_script([
+            *inspections(),
+            call('submit_report', report='{broken'),
+            call('submit_report', report=json.dumps({'repository': URL, 'violations': [], 'extra': True})),
+            *submissions({'repository': URL, 'violations': []}),
+        ])
+        self.assertEqual(report['violations'], [])
+        self.assertTrue(any('report must be a JSON object' in str(messages) for messages in provider.inputs))
+        self.assertTrue(any('exactly repository and violations' in str(messages) for messages in provider.inputs))
+
     def test_final_report_schema_pins_current_url_without_shared_mutation(self):
         _, provider = self.run_script([*inspections(), *submissions({'repository': URL, 'violations': []})])
         for definitions in provider.definitions[-2:]:

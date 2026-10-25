@@ -131,7 +131,16 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
                     if set(arguments) != {"report"}:
                         raise AuditError("submit_report expects exactly report and reason")
                     coverage.assert_ready()
-                    report = validate_report(arguments["report"], repository, tools)
+                    payload = arguments['report']
+                    # Some compatible endpoints double-encode nested tool JSON.
+                    # Decode one transport layer; never drop fields or bypass
+                    # the same strict schema/evidence checks for the result.
+                    if isinstance(payload, str):
+                        try:
+                            payload = json.loads(payload)
+                        except (ValueError, RecursionError) as exc:
+                            raise AuditError('report must be a JSON object with repository and violations') from exc
+                    report = validate_report(payload, repository, tools)
                     if reviewing:
                         trace.write("completed", turn=turn, reason=reason, report=report)
                         return report
