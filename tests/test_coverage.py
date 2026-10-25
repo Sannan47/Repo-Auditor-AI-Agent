@@ -112,3 +112,12 @@ class CoverageTests(RepositoryFixture, unittest.TestCase):
             self.coverage.record([self.assessment('dependency_management', ['requirements'])], 2)
         self.assertIn("'project': 'pyproject.toml'", str(caught.exception))
         self.assertIn('Actually unread: []', str(caught.exception))
+
+    def test_one_unavailable_manifest_does_not_waive_unread_manifests(self):
+        self.observe('list_files', {}, 'listing')
+        self.observe('read_file', {'path': 'README.md'}, 'readme')
+        (self.root / 'requirements.txt').write_bytes(b'x' * 512_001)
+        self.observe('read_file', {'path': 'requirements.txt'}, 'failed')
+        self.assertNotIn('dependency_management', self.coverage.eligible_areas())
+        with self.assertRaises(AuditError):
+            self.coverage.record([self.assessment('dependency_management', ['failed', 'readme'], 'unavailable')], 2)

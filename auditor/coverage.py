@@ -93,6 +93,27 @@ class Coverage:
                                         and paths and not reads.intersection(paths)},
                 'evidence_index': evidence[-100:]}
 
+    def eligible_areas(self):
+        if self.paths is None:
+            return []
+        reads = {call['arguments'].get('path') for call in self.calls.values()
+                 if call['name'] == 'read_file' and 'error' not in call['result']
+                 and (call['result'].get('lines') or call['result'].get('total_lines') == 0)}
+        eligible = []
+        for area, expected in self.requirements().items():
+            attempted = {call['arguments'].get('path') for call in self.calls.values() if call['name'] == 'read_file'}
+            failed = any(('error' in call['result'] or call['result'].get('truncated'))
+                         and (not expected or call['arguments'].get('path') in expected
+                              or call['name'] == 'list_files' and call['result'].get('truncated'))
+                         for call in self.calls.values())
+            if failed and reads and (area not in {'dependency_management', 'ci'} or set(expected).issubset(attempted)):
+                eligible.append(area)
+            elif expected and (set(expected).issubset(reads) if area in {'dependency_management', 'ci'} else bool(reads.intersection(expected))):
+                eligible.append(area)
+            elif not expected and (reads or not self.paths):
+                eligible.append(area)
+        return eligible
+
     def _record_validated(self, assessments, turn):
         if self.paths is None:
             raise AuditError('Discover repository structure with list_files before recording coverage')
@@ -127,10 +148,16 @@ class Coverage:
                 if expected and not any(call['arguments'].get('path') in expected
                                         or call['name'] == 'list_files' and call['result'].get('truncated') for call in calls):
                     raise AuditError(f'{area}: cite the unavailable relevant artifact, not an unrelated failure')
+                attempted = {call['arguments'].get('path') for call in calls if call['name'] == 'read_file'}
+                if area in {'dependency_management', 'ci'} and set(expected) - attempted:
+                    raise AuditError(f'{area}: one unavailable artifact does not waive the others; inspect and cite remaining paths: {sorted(set(expected) - attempted)[:8]}')
             elif status == 'not_applicable' and expected:
                 raise AuditError(f'{area}: relevant artifacts exist; inspect them and record checked or an actual limitation')
             elif expected and not reads.intersection(expected):
-                raise AuditError(f'{area}: read relevant artifact content before assessing this area: {expected[:8]}')
+                available = {key: call['arguments'].get('path') for key, call in self.calls.items()
+                             if call['turn'] < turn and call['name'] == 'read_file'
+                             and call['arguments'].get('path') in expected and 'error' not in call['result']}
+                raise AuditError(f'{area}: cite relevant content. Already inspected IDs: {available}. If none are available, read one of: {expected[:8]}')
             elif area in {'dependency_management', 'ci'} and set(expected) - reads:
                 missing = set(expected) - reads
                 available = {call_id: call['arguments'].get('path') for call_id, call in self.calls.items()

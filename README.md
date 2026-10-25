@@ -128,6 +128,7 @@ starts the loop, writes validated JSON, and cleans up the clone.
 | --- | --- |
 | `list_files()` | Lists tracked file paths, including dotfiles, with explicit truncation metadata. |
 | `read_file(path)` | Returns numbered lines; optional `start_line`/`end_line` support follow-up reads. |
+| `read_files(paths)` | Bounded initial pages for up to eight files in one call, with individual evidence IDs and errors. |
 | `search_code(pattern)` | Case-insensitive **literal substring** search, with file/line evidence and skipped-file metadata. |
 | `git_log()` | Latest 30 commit subjects/dates from a shallow clone of up to 100 commits. |
 | `read_action_metadata(action)` | Anonymous source inspection of public action metadata at the referenced revision; verifies version-dependent controls without executing the action. |
@@ -164,6 +165,10 @@ returns an empty `violations` array.
 Coverage assessments use `checked`, `not_applicable`, or `unavailable` with an
 explanation and actual earlier tool-call IDs. Relevant content must be read;
 Valid area assessments persist when another item in a batch needs correction.
+Finalization is not offered until coverage is complete. The assessment tool is
+offered for areas whose evidence prerequisites are met; bulk reads keep larger
+workflow sets within the model-turn budget. One unavailable manifest/workflow
+does not waive inspection attempts for the remaining recognized files.
 Each turn includes a compact evidence-ID/path ledger and unread manifest/workflow
 list so the model can plan follow-up reads without restarting completed areas.
 dependency assessments must reference all discovered recognized manifests and CI

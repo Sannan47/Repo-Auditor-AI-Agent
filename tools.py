@@ -59,6 +59,9 @@ class InspectionTools:
         return redact(data.decode("utf-8", errors="replace")).splitlines()
 
     def read_file(self, path: str, start_line: int = 1, end_line: int = 200) -> dict:
+        return self._read_range(path, start_line, end_line, MAX_OUTPUT_CHARS)
+
+    def _read_range(self, path, start_line, end_line, output_budget):
         if type(start_line) is not int or type(end_line) is not int or start_line < 1 or end_line < start_line:
             raise AuditError("Use positive integer line numbers with end_line >= start_line")
         lines = self._read(path)
@@ -67,7 +70,7 @@ class InspectionTools:
         for number in range(start_line, min(end_line, len(lines)) + 1):
             entry = {"line": number, "text": lines[number - 1]}
             cost = len(json.dumps(entry))
-            if chars + cost > MAX_OUTPUT_CHARS:
+            if chars + cost > output_budget:
                 break
             selected.append(entry)
             chars += cost
@@ -76,6 +79,19 @@ class InspectionTools:
         return {"path": path, "total_lines": len(lines), "lines": selected,
                 "truncated": last < min(end_line, len(lines)),
                 "more_lines": last < len(lines), "next_line": last + 1 if last < len(lines) else None}
+
+    def read_files(self, paths: list[str]) -> dict:
+        if not isinstance(paths, list) or not 1 <= len(paths) <= 8 or any(not isinstance(path, str) for path in paths):
+            raise AuditError('read_files needs one to eight repository-relative paths')
+        if len(set(paths)) != len(paths):
+            raise AuditError('read_files paths must be unique')
+        results = []
+        for path in paths:
+            try:
+                results.append(self._read_range(path, 1, 200, MAX_OUTPUT_CHARS // len(paths)))
+            except (AuditError, OSError, TypeError, ValueError) as exc:
+                results.append({'path': path, 'error': str(exc)})
+        return {'files': results, 'scope': 'Bounded initial pages; follow truncated files individually with read_file.'}
 
     def search_code(self, pattern: str) -> dict:
         """Case-insensitive literal search avoids untrusted regex execution."""
@@ -110,7 +126,7 @@ class InspectionTools:
         return read_action_metadata(action)
 
     def execute(self, name: str, arguments: dict) -> dict:
-        if name not in {"list_files", "read_file", "search_code", "git_log", "read_action_metadata"}:
+        if name not in {"list_files", "read_file", "read_files", "search_code", "git_log", "read_action_metadata"}:
             return {"error": "Unknown inspection tool"}
         try:
             return sanitize(getattr(self, name)(**arguments))

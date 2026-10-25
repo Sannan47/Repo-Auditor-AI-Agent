@@ -2,6 +2,7 @@
 
 import re
 import json
+from urllib.parse import unquote
 
 
 _TOKEN_PATTERNS = (
@@ -11,8 +12,8 @@ _TOKEN_PATTERNS = (
     re.compile(r"\bAIza[A-Za-z0-9_-]{30,}\b"),
     re.compile(r"\bAQ\.[A-Za-z0-9_.-]{20,}"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{12,}\b"),
-    re.compile(r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@"),
 )
+_CREDENTIAL_URI = re.compile(r'(?i)(?P<scheme>\b[a-z][a-z0-9+.-]*://)(?P<user>[^\s/@:]+):(?P<password>[^\s/@]+)@')
 _KNOWN_SECRETS: set[str] = set()
 _SECRET_NAME = r"[\w.-]*(?:password|passwd|secret|token|api[_-]?key|access[_-]?key|credential)[\w.-]*"
 _PRIVATE_KEY = re.compile(
@@ -156,6 +157,16 @@ def redact(text: str) -> str:
         return "[REDACTED]" + "\n" * match.group(0).count("\n")
 
     text = _multiline(_named_defaults(text))
+
+    def credential_uri(match):
+        password = match['password']
+        if _PLACEHOLDER.fullmatch(password):
+            return match.group(0)
+        protect_secret(password)
+        protect_secret(unquote(password))
+        return match['scheme'] + '[REDACTED]@'
+
+    text = _CREDENTIAL_URI.sub(credential_uri, text)
     for pattern in _TOKEN_PATTERNS:
         text = pattern.sub(replace_token, text)
 

@@ -3,8 +3,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from auditor.engine import Trace, run_agent
-from auditor.coverage import AREAS
+from auditor.engine import Trace, available_tools, run_agent
+from auditor.coverage import AREAS, Coverage
 from auditor.report import validate_report
 from auditor.repository import AuditError
 from test_tools import RepositoryFixture
@@ -123,7 +123,7 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
             assessed(), *submissions({'repository': URL, 'violations': []}),
         ])
         self.assertEqual(report['violations'], [])
-        self.assertTrue(any('Coverage incomplete' in str(messages) for messages in provider.inputs))
+        self.assertTrue(any('not available at the current evidence state' in str(messages) for messages in provider.inputs))
 
     def test_final_review_uses_primary_evidence_without_first_pass_anchoring(self):
         responses = inspections()
@@ -136,6 +136,22 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
         self.assertIn('source_observations', str(review))
         self.assertIn('config.py', str(review))
         self.assertEqual(len(report['violations']), 1)
+
+    def test_finalization_is_not_offered_before_evidence_is_ready(self):
+        names = {tool['function']['name'] for tool in available_tools(Coverage())}
+        self.assertIn('read_files', names)
+        self.assertNotIn('submit_report', names)
+        self.assertNotIn('record_assessments', names)
+
+    def test_bulk_read_ids_support_real_coverage_and_reporting(self):
+        record = call('record_assessments', assessments=[{
+            'area': area, 'status': 'checked', 'summary': 'Reviewed fixture source',
+            'evidence_calls': ['call_read_files_file_1', 'call_read_files_file_2']} for area in AREAS])
+        report, provider = self.run_script([call('list_files'),
+            call('read_files', paths=['README.md', 'config.py']), record,
+            *submissions({'repository': URL, 'violations': [finding()]})])
+        self.assertEqual(report['violations'][0]['line'], 1)
+        self.assertIn('call_read_files_file_2', str(provider.inputs[2]))
 
 
 if __name__ == "__main__":

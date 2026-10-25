@@ -1,10 +1,11 @@
 """Our explicit observe/reason/select/execute/interpret/report control loop."""
 
 import json
+from copy import deepcopy
 from pathlib import Path
 
 from auditor.coverage import AREAS, Coverage
-from auditor.prompts import REVIEW_PROMPT, SYSTEM_PROMPT
+from auditor.prompts import REVIEW_PROMPT, REVIEW_SYSTEM_PROMPT, SYSTEM_PROMPT
 from auditor.report import REPORT_SCHEMA, validate_report
 from auditor.repository import AuditError
 from auditor.safety import sanitize
@@ -23,6 +24,8 @@ TOOL_DEFINITIONS = [
     function("read_file", "Read numbered text lines. Follow next_line to inspect more content.", {
         "path": {"type": "string"}, "start_line": {"type": "integer", "minimum": 1},
         "end_line": {"type": "integer", "minimum": 1}}, ("path",)),
+    function('read_files', 'Efficiently inspect initial pages of up to eight independent files in one call. Each file returns its own inspection ID; follow truncated pages with read_file.', {
+        'paths': {'type': 'array', 'items': {'type': 'string'}, 'minItems': 1, 'maxItems': 8}}, ('paths',)),
     function("search_code", "Search tracked text files using a case-insensitive LITERAL substring (not regex).", {
         "pattern": {"type": "string"}}, ("pattern",)),
     function("git_log", "Inspect latest 30 commit subjects from a shallow clone of up to 100 commits."),
@@ -39,6 +42,25 @@ TOOL_DEFINITIONS = [
     function("submit_report", "Finish after interpreting prior results; report exact evidence-backed findings.", {
         "report": REPORT_SCHEMA}, ("report",)),
 ]
+
+
+def available_tools(coverage):
+    try:
+        coverage.assert_ready()
+        ready = True
+    except AuditError:
+        ready = False
+    eligible = list(AREAS) if ready else coverage.eligible_areas()
+    definitions = []
+    for definition in TOOL_DEFINITIONS:
+        name = definition['function']['name']
+        if name == 'submit_report' and not ready or name == 'record_assessments' and not eligible:
+            continue
+        if name == 'record_assessments':
+            definition = deepcopy(definition)
+            definition['function']['parameters']['properties']['assessments']['items']['properties']['area']['enum'] = eligible
+        definitions.append(definition)
+    return definitions
 
 
 class Trace:
@@ -68,8 +90,10 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
     coverage = Coverage()
     for turn in range(1, max_rounds + 1):
         independent_review = None
+        definitions = available_tools(coverage)
+        allowed_names = {definition['function']['name'] for definition in definitions}
         try:
-            message = provider.complete(messages, TOOL_DEFINITIONS)
+            message = provider.complete(messages, definitions)
         finally:
             if hasattr(provider, 'drain_retry_events'):
                 for event in provider.drain_retry_events():
@@ -88,6 +112,8 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
             try:
                 name = call["function"]["name"]
                 call_id = call["id"]
+                if name not in allowed_names:
+                    raise AuditError('This tool is not available at the current evidence state; inspect pending content first')
                 arguments = json.loads(call["function"]["arguments"])
                 if not isinstance(arguments, dict):
                     raise ValueError("Tool arguments must be a JSON object")
@@ -118,7 +144,7 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
                                               for area, item in coverage.assessments.items()},
                         'source_observations': [{'inspection_id': key, 'tool': entry['name'],
                                                  'arguments': entry['arguments'], 'result': entry['result']}
-                                                for key, entry in coverage.calls.items()],
+                                                for key, entry in coverage.calls.items() if entry['name'] != 'read_files'],
                     }
                 elif name == 'record_assessments':
                     if set(arguments) != {'assessments'}:
@@ -127,6 +153,11 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
                     trace.write('coverage', turn=turn, assessments=coverage.assessments)
                 else:
                     result = tools.execute(name, arguments)
+                    if name == 'read_files' and 'error' not in result:
+                        for index, child in enumerate(result['files']):
+                            child_id = f'{call_id}_file_{index + 1}'
+                            child['inspection_id'] = child_id
+                            coverage.observe(child_id, 'read_file', {'path': child['path']}, child, turn)
                     coverage.observe(call_id, name, arguments, result, turn)
                     # Some providers do not expose transport call IDs to the model.
                     # Put the evidence ID in visible result content explicitly.
@@ -147,11 +178,11 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
                 # Start a fresh reviewer context from primary evidence, not a
                 # long chain of the first pass's possibly mistaken conclusions.
                 # The same tools, clone, observation ledger and turn cap remain.
-                messages = [{'role': 'system', 'content': SYSTEM_PROMPT},
+                messages = [{'role': 'system', 'content': REVIEW_SYSTEM_PROMPT},
                             {'role': 'user', 'content': json.dumps(sanitize(independent_review))}]
                 trace.write('review_context', turn=turn, mode='independent_primary_evidence',
                             inspection_count=len(coverage.calls))
             else:
                 messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result)})
-        messages.append({"role": "user", "content": f"Interpret the tool results and select your next action. {max_rounds - turn} model turns remain. Investigation ledger: {json.dumps(coverage.planning_context())}. Choose investigations dynamically. Batch independent unread file inspections (at most eight calls per turn), then record only areas with actual evidence. Valid assessments persist if other areas need correction; never send empty evidence_calls."})
+        messages.append({"role": "user", "content": f"Interpret the tool results and select your next action. {max_rounds - turn} model turns remain. Investigation ledger: {json.dumps(coverage.planning_context())}. Choose investigations dynamically. Use read_files(paths) for up to eight independent unread files in one call; read_file for follow-ups. Finalization tools are offered only when their evidence prerequisites are met. Valid assessments persist; cite actual visible inspection IDs and never send empty evidence_calls."})
     raise AuditError("Agent exhausted its model-turn budget without a validated report; inspect the trace or increase AGENT_MAX_ROUNDS")

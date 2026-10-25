@@ -30,6 +30,11 @@ def verify_artifacts(repository, report_path, trace_path):
                 listing_complete = not result['truncated']
             if event['name'] == 'read_file' and 'error' not in result:
                 observed.setdefault(result['path'], set()).update(row['line'] for row in result['lines'])
+            if event['name'] == 'read_files' and 'error' not in result:
+                for child in result['files']:
+                    inspections[child['inspection_id']] = event['turn']
+                    if 'error' not in child:
+                        observed.setdefault(child['path'], set()).update(row['line'] for row in child['lines'])
             if event['name'] == 'search_code' and 'error' not in result:
                 for row in result['matches']:
                     observed.setdefault(row['file'], set()).add(row['line'])

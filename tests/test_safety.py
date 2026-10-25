@@ -101,3 +101,16 @@ class SafetyTests(RepositoryFixture, unittest.TestCase):
     def test_terraform_empty_and_environment_defaults_are_not_credentials(self):
         content = 'variable "api_key" {\n  default = ""\n}\nvariable "secret" {\n  default = "${var.secret_from_environment}"\n}\n'
         self.assertEqual(redact(content), content)
+
+    def test_database_uri_passwords_are_redacted_even_without_secret_variable_names(self):
+        for scheme in ('postgresql', 'mysql', 'redis', 'mongodb'):
+            with self.subTest(scheme=scheme):
+                content = f'DATABASE_URL="{scheme}://app:synthetic-dsn-password@localhost/db"'
+                self.assertNotIn('synthetic-dsn-password', redact(content))
+                self.assertIn('localhost/db', redact(content))
+        redact('URL=postgres://app:synth%21dsn@localhost/db')
+        self.assertNotIn('synth!dsn', redact('echo synth!dsn'))
+
+    def test_database_uri_environment_references_remain_visible(self):
+        content = 'DATABASE_URL=postgresql://${DB_USER}:${DB_PASSWORD}@localhost/db'
+        self.assertEqual(redact(content), content)

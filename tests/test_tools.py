@@ -101,6 +101,17 @@ class ToolTests(RepositoryFixture, unittest.TestCase):
         self.assertEqual(before, after)
         self.assertEqual((self.root / "config.py").read_bytes(), content)
 
+    def test_bulk_reads_keep_other_files_when_one_is_missing(self):
+        result = self.tools.execute('read_files', {'paths': ['README.md', 'missing', 'config.py']})
+        self.assertEqual(result['files'][0]['path'], 'README.md')
+        self.assertIn('error', result['files'][1])
+        self.assertIn(1, self.tools.observed['config.py'])
+        self.assertNotIn('a-private-value', str(result))
+
+    def test_bulk_read_limits_are_enforced(self):
+        for paths in ([], ['README.md'] * 2, ['x' + str(i) for i in range(9)]):
+            self.assertIn('error', self.tools.execute('read_files', {'paths': paths}))
+
 
 if __name__ == "__main__":
     unittest.main()
