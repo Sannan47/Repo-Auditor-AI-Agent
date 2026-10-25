@@ -172,6 +172,10 @@ The report contains exactly `repository` and `violations`. Every violation conta
   aimed at AI agents. Prompt defenses and heuristic credential redaction reduce risk
   but cannot guarantee detection of every adversarial instruction or secret format.
   Tool outputs are redacted before reaching the provider, traces, or report.
+  Whole-file redaction handles PEM private keys, YAML credential blocks, and
+  triple-quoted credentials before splitting text into numbered lines. Protocol
+  keys and severity enum values are preserved, and sanitized reports are validated
+  again before acceptance.
 - Detection quality depends on the model, inspected content, available context and
   limits. No access to instructor hidden repositories or answer keys is assumed.
 

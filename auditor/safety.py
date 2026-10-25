@@ -10,13 +10,22 @@ _TOKEN_PATTERNS = (
     re.compile(r"\bAIza[A-Za-z0-9_-]{30,}\b"),
     re.compile(r"\bAQ\.[A-Za-z0-9_.-]{20,}"),
     re.compile(r"\bxox[baprs]-[A-Za-z0-9-]{12,}\b"),
-    re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----[\s\S]*?(?:-----END (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|\Z)"),
     re.compile(r"(?i)(https?://)[^\s/@:]+:[^\s/@]+@"),
 )
 _KNOWN_SECRETS: set[str] = set()
+_SECRET_NAME = r"[\w.-]*(?:password|passwd|secret|token|api[_-]?key|access[_-]?key|credential)[\w.-]*"
+_PRIVATE_KEY = re.compile(
+    r"-----BEGIN (?:(?:RSA|DSA|EC|OPENSSH|ENCRYPTED) )?PRIVATE KEY-----[\s\S]*?"
+    r"(?:-----END (?:(?:RSA|DSA|EC|OPENSSH|ENCRYPTED) )?PRIVATE KEY-----|\Z)"
+)
+_KEY_BOUNDARY = re.compile(r"-----\s*(?:BEGIN|END) (?:(?:RSA|DSA|EC|OPENSSH|ENCRYPTED) )?PRIVATE KEY-----")
+_YAML_HEADER = re.compile(r"^(?P<indent>[ \t]*)[\"']?" + _SECRET_NAME + r"[\"']?\s*:\s*[|>][+\-0-9]*\s*(?:#.*)?$", re.I)
+_TRIPLE_QUOTED = re.compile(
+    r"(?P<prefix>\b" + _SECRET_NAME + r"\b\s*=\s*)(?P<quote>\"\"\"|''')(?P<body>[\s\S]*?)(?P=quote)", re.I
+)
 _ASSIGNMENT = re.compile(
-    r"(?im)(\b[\w.-]*(?:password|passwd|secret|token|api[_-]?key|access[_-]?key|credential)[\w.-]*\b"
-    r"[\"']?\s*[:=]\s*)([^\r\n,;]+)"
+    r"(?im)(\b" + _SECRET_NAME + r"\b[\"']?\s*[:=]\s*)"
+    r'''("(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^\r\n,;]+)'''
 )
 _PLACEHOLDER = re.compile(
     r"^(?:\s*|[\"']?\s*(?:\$\{.*\}|\$\w+|\{\{.*\}\}|os\.(?:getenv|environ).*|"
@@ -30,18 +39,69 @@ def protect_secret(value: str) -> None:
         _KNOWN_SECRETS.add(value)
 
 
+def _remember_multiline(value: str) -> None:
+    protect_secret(value.strip())
+    for line in value.splitlines():
+        protect_secret(line.strip())
+
+
+def _multiline(text: str) -> str:
+    def private_key(match):
+        output = []
+        for line in match.group(0).splitlines(keepends=True):
+            value = line.rstrip("\r\n")
+            newline = line[len(value):]
+            if _KEY_BOUNDARY.fullmatch(value):
+                output.append(value + newline)
+            else:
+                _remember_multiline(value)
+                output.append("[REDACTED: private key]" + newline)
+        return "".join(output)
+
+    text = _PRIVATE_KEY.sub(private_key, text)
+
+    def triple_quoted(match):
+        _remember_multiline(match["body"])
+        return (match["prefix"] + match["quote"] + "[REDACTED: multiline credential]"
+                + "\n" * match["body"].count("\n") + match["quote"])
+
+    text = _TRIPLE_QUOTED.sub(triple_quoted, text)
+    lines = text.splitlines(keepends=True)
+    index = 0
+    while index < len(lines):
+        match = _YAML_HEADER.fullmatch(lines[index].rstrip("\r\n"))
+        index += 1
+        if not match:
+            continue
+        indentation = len(match["indent"])
+        while index < len(lines):
+            original = lines[index]
+            value = original.rstrip("\r\n")
+            if value.strip() and len(value) - len(value.lstrip(" \t")) <= indentation:
+                break
+            if value.strip() and not _PLACEHOLDER.fullmatch(value.strip()):
+                _remember_multiline(value)
+                prefix = value[:len(value) - len(value.lstrip(" \t"))]
+                lines[index] = prefix + "[REDACTED: multiline credential]" + original[len(value):]
+            index += 1
+    return "".join(lines)
+
+
 def redact(text: str) -> str:
     """Remove token-like strings; keep line counts stable for evidence locations."""
     def replace_token(match):
         protect_secret(match.group(0))
         return "[REDACTED]" + "\n" * match.group(0).count("\n")
 
+    text = _multiline(text)
     for pattern in _TOKEN_PATTERNS:
         text = pattern.sub(replace_token, text)
 
     def replace_assignment(match):
         value = match.group(2).strip()
         if _PLACEHOLDER.fullmatch(value):
+            return match.group(0)
+        if re.fullmatch(r"[|>][+\-0-9]*\s*(?:#.*)?", value):
             return match.group(0)
         # Remember literal values so an echoed value without its variable label
         # is also removed from later tool output and model-generated findings.
@@ -68,8 +128,7 @@ def sanitize(value):
             for child in item:
                 visit(child)
         elif isinstance(item, dict):
-            for key, child in item.items():
-                redact(str(key))
+            for child in item.values():
                 visit(child)
 
     def render(item):
@@ -78,7 +137,11 @@ def sanitize(value):
         if isinstance(item, list):
             return [render(child) for child in item]
         if isinstance(item, dict):
-            return {redact(str(key)): render(child) for key, child in item.items()}
+            # Keys belong to our tool/report protocol, not repository content.
+            # Severity enum values are also structural, prevalidated metadata.
+            return {key: child if key == "severity" and isinstance(child, str)
+                    and child in {"critical", "high", "medium", "low"} else render(child)
+                    for key, child in item.items()}
         return item
 
     visit(value)

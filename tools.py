@@ -4,7 +4,7 @@ import json
 from pathlib import Path, PurePosixPath
 
 from auditor.repository import AuditError, git_command
-from auditor.safety import sanitize
+from auditor.safety import redact, sanitize
 
 
 MAX_FILE_BYTES = 512_000
@@ -54,7 +54,8 @@ class InspectionTools:
             raise AuditError(f"File exceeds the {MAX_FILE_BYTES}-byte inspection limit")
         if b"\0" in data:
             raise AuditError("Binary file is not supported by this text inspection tool")
-        return data.decode("utf-8", errors="replace").splitlines()
+        # Redact complete blocks BEFORE pagination or numbered-line construction.
+        return redact(data.decode("utf-8", errors="replace")).splitlines()
 
     def read_file(self, path: str, start_line: int = 1, end_line: int = 200) -> dict:
         if type(start_line) is not int or type(end_line) is not int or start_line < 1 or end_line < start_line:

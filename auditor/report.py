@@ -23,7 +23,7 @@ REPORT_SCHEMA = {
 }
 
 
-def validate_report(report: dict, repository: str, tools) -> dict:
+def _validate_report(report: dict, repository: str, tools) -> dict:
     if not isinstance(report, dict) or set(report) != {"repository", "violations"}:
         raise AuditError("Report must contain exactly repository and violations")
     if report["repository"] != repository:
@@ -54,4 +54,11 @@ def validate_report(report: dict, repository: str, tools) -> dict:
         if key not in seen and semantic_key not in seen:
             findings.append(finding)
             seen.update((key, semantic_key))
-    return sanitize({"repository": repository, "violations": findings})
+    return {"repository": repository, "violations": findings}
+
+
+def validate_report(report: dict, repository: str, tools) -> dict:
+    report = _validate_report(report, repository, tools)
+    sanitized = sanitize(report)
+    # Redaction is not allowed to bypass structural or location validation.
+    return _validate_report(sanitized, repository, tools)
