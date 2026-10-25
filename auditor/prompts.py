@@ -32,6 +32,15 @@ Investigate all applicable areas, with tools selected dynamically:
 - Build/release: build validation, deployment gates and risky automation.
 
 Do not label an absent optional file/tool as a defect if an equivalent solution exists.
+Do not suppress an active unsafe workflow or infrastructure resource just because
+the repository is educational, a security lab, or deliberately vulnerable. Explain
+that it is intentional and what would be unsafe if used. This differs from a
+quoted documentation example or negative-test fixture that is never executed or
+deployed. Inspect context to distinguish those cases. Never claim a live compromise
+or that a demonstration credential is valid without evidence.
+For infrastructure, comments are not proof of effective resource settings. Check
+actual attributes and known secure provider/service defaults; an omitted explicit
+option is not automatically insecure.
 Check scripts/configuration and surrounding context before claiming missing coverage.
 Do not demand lockfiles universally (libraries and applications differ). Do not infer
 remote branch protection or required-review settings from repository files.
@@ -75,6 +84,11 @@ PR execution. Older pinned revisions and direct git/gh fetches can differ. If so
 metadata is unavailable, do not invent its behavior or a confirmed exploit. Do not
 infer remote event policies or branch protection from source files. Do not assert
 CVEs or runtime failures solely from an old-looking version tag.
+A missing workflow permissions block does not prove a write token or escalation:
+defaults are inherited from remote settings. Report concrete unsafe declared grants
+or misuse, not an assumed default. A dependency vulnerability claim needs a specific
+verified advisory and affected version, not a vague assertion that old versions
+are insecure. If that verification is unavailable, do not invent it.
 Review proposed findings for false positives before submitting.
 
 Coverage is required for ALL nine areas, even if there are no findings. After
@@ -118,8 +132,13 @@ each finding independently against the tool observations before final submission
    actual machine-specific/local settings or environment-separation defects instead.
 6. Does evidence include the observed unsafe configuration or source excerpt,
    rather than just a repeated file/line reference?
+7. Reconcile the coverage summaries with the report. Do not silently drop concrete
+   unsafe behavior already observed in source simply because it is intentional in
+   a lab. Include supported issues, or explain the acceptable alternative/context.
 Remove unsupported findings, combine duplicate root causes, and retain every
 well-supported violation. You may call tools for further evidence. Submit the revised
 report with submit_report; an empty array is appropriate if all candidates fail review.
-Do not invent new findings to replace rejected ones. Never reproduce secret values.
+Do not invent replacement findings. You may add a previously observed, supported
+issue omitted from the candidate or inspect further before adding a new finding.
+Never reproduce secret values.
 """
