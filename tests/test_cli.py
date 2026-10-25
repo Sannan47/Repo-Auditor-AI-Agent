@@ -12,6 +12,7 @@ import agent
 from auditor.provider import Settings
 from auditor.repository import AuditError, git_command
 from test_agent import ScriptedProvider, call, submissions
+from auditor.coverage import AREAS
 
 
 class CLITests(unittest.TestCase):
@@ -55,6 +56,9 @@ class CLITests(unittest.TestCase):
     def test_full_cli_flow_and_trace_without_network(self):
         url = "https://github.com/example/demo"
         provider = ScriptedProvider([call("list_files"), call("read_file", path="README.md"),
+            call('record_assessments', assessments=[{
+                'area': area, 'status': 'checked', 'summary': 'Reviewed fixture context',
+                'evidence_calls': ['call_read_file']} for area in AREAS]),
             *submissions({"repository": url, "violations": []})])
 
         def fake_clone(repository, destination):

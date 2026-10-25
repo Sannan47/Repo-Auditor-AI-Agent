@@ -43,6 +43,15 @@ Every finding needs a stable rule ID, meaningful category, calibrated severity
 (critical/high/medium/low), repository-relative file and observed 1-based line or
 JSON null when inapplicable, concrete description, specific evidence, and actionable
 recommendation. Never reproduce a secret value, even in evidence or a recommendation.
+Calibrate severity to demonstrated impact: critical is reserved for direct severe
+compromise such as privileged untrusted-code execution or actual credential exposure
+enabling takeover. Missing/skipped tests, portability issues, dependency drift and
+ordinary hygiene do not become critical without a demonstrated severe impact chain.
+Use medium or low for ordinary quality/configuration issues and high for substantial
+demonstrated risk. Nonsecret configuration is not an exposed credential merely
+because its filename is .env. Judge its actual contents and intended environment.
+Evidence should include a concise sanitized source excerpt and why it demonstrates
+the issue; a file/line citation alone is not an explanation of the defect.
 File findings must cite a file actually inspected; cite the most relevant observed line.
 Use null file/line for genuinely repository-level absence, not nonexistent filenames.
 Combine repeated instances of the same root cause and avoid duplicate findings.
@@ -51,7 +60,28 @@ For injection claims, trace an actual untrusted input to a dangerous sink. A sub
 argument list with shell disabled is not shell injection by itself. Controlled command
 arguments and validated URLs are not vulnerabilities merely because future callers
 could hypothetically use them incorrectly. Cite the demonstrated unsafe behavior.
+A pull_request_target trigger or write permission alone is not proof of a defect.
+Inspect whether untrusted PR code is actually checked out/executed or unsafe input
+crosses a trust boundary. Metadata-only labeling with quoted inputs can be safe.
+For a privileged PR-code execution finding, include the observed untrusted-head
+checkout/execution alongside the trigger and permissions in the evidence.
 Review proposed findings for false positives before submitting.
+
+Coverage is required for ALL nine areas, even if there are no findings. After
+interpreting inspections, use record_assessments with status checked,
+not_applicable, or unavailable, a concrete conclusion, and earlier tool-call IDs.
+Use the exact inspection_id explicitly included in each inspection result; do not
+invent IDs based on tool names or turn numbers.
+Read dependency manifests, CI workflows, README and other relevant content when
+present; file names or a negative search alone do not establish a clean audit.
+Relevant evidence anchors are hints about content to investigate, never findings
+or proof that an optional tool/file is required. Inspect alternatives and distinguish
+fixture/example files from production code. For multiple manifests/workflows,
+investigate consistency and interactions, not just one isolated file. Unavailable
+checks must cite actual errors/truncation; do not label them passed or clean.
+Coverage is recorded in the trace, not as extra fields in the final JSON report.
+You choose the tools, order, follow-ups, conclusions and findings yourself. Batch
+independent reads to use the turn budget efficiently; at most eight calls per turn.
 
 Use submit_report alone in a turn, only after interpreting all preceding tool results.
 An empty violations array is correct when no defensible issues are found after an
@@ -69,6 +99,11 @@ each finding independently against the tool observations before final submission
    not proof of a real credential; permissions must be judged in workflow context.
 4. Could an acceptable alternative explain the apparent absence or suspicious pattern?
 5. Is severity justified by actual impact, and is remediation necessary and specific?
+   Downgrade ordinary validation/configuration defects that lack critical impact.
+   Do not turn a nonsecret .env file into a credential exposure finding; identify
+   actual machine-specific/local settings or environment-separation defects instead.
+6. Does evidence include the observed unsafe configuration or source excerpt,
+   rather than just a repeated file/line reference?
 Remove unsupported findings, combine duplicate root causes, and retain every
 well-supported violation. You may call tools for further evidence. Submit the revised
 report with submit_report; an empty array is appropriate if all candidates fail review.

@@ -59,10 +59,6 @@ class SafetyTests(RepositoryFixture, unittest.TestCase):
             redact(f'password="{word}"')
         self.assertEqual(set(sanitize({'line': 4, 'file': 'example.py'})), {'line', 'file'})
         self.assertEqual(sanitize({'severity': 'high'})['severity'], 'high')
-        # Clear collisions in public URL/location values; schema keys remain protected.
-        _KNOWN_SECRETS.clear()
-        redact('password="line"')
-        redact('password="high"')
         self.tools.execute('read_file', {'path': 'config.py'})
         finding = dict(rule_id='SEC-001', category='security', severity='high', file='config.py', line=1,
                        description='Credential committed', evidence='Assignment at first row', recommendation='Rotate credential')

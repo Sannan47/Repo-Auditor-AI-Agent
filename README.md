@@ -111,7 +111,10 @@ starts the loop, writes validated JSON, and cleans up the clone.
 3. Dispatch only allowlisted tools with validated arguments.
 4. Return sanitized outputs or explicit errors to the LLM.
 5. Let the LLM select follow-up investigations.
-6. Validate the candidate `submit_report` JSON and cited locations. Return invalid
+6. Require `record_assessments` conclusions for all nine inspection areas, linked
+   to earlier inspection tool-call IDs. Reject listing-only conclusions, unread
+   manifests/workflows, invented evidence IDs, and unsupported unavailable checks.
+7. Validate the candidate `submit_report` JSON and cited locations. Return invalid
    reports for correction. Require a final LLM evidence review to challenge
    unsupported claims, allow further tool calls, and then accept a reviewed report.
 
@@ -129,6 +132,9 @@ starts the loop, writes validated JSON, and cleans up the clone.
 duplicate IDs/descriptions at a location. Semantic evidence interpretation and
 combining related root causes are the LLM's responsibilities, not guarantees of
 schema validation. `auditor/safety.py` redacts credential-like values.
+`auditor/coverage.py` records investigated areas and checks evidence references.
+It identifies relevant artifact types for coverage; it does not scan for defects,
+choose the investigation order, or generate findings. Those remain LLM decisions.
 
 ## Inspection scope and evidence
 
@@ -144,6 +150,16 @@ Remote branch protection is not inferred from repository files. A finding must
 cite an inspected file/line or use JSON null for inapplicable locations. Repository
 absence findings require a complete file listing. A clean completed inspection
 returns an empty `violations` array.
+
+Coverage assessments use `checked`, `not_applicable`, or `unavailable` with an
+explanation and actual earlier tool-call IDs. Relevant content must be read;
+dependency assessments must reference all discovered recognized manifests and CI
+assessments all discovered recognized workflow files. Other areas require relevant
+context, not a file listing or negative search alone. Actual failed/truncated checks
+can support `unavailable`; they are never labeled passed. The trace retains these
+limitations and assessments. Coverage is not an extra field in the report schema.
+This bookkeeping establishes inspection evidence, not the correctness of every
+semantic conclusion or exhaustive inspection of every source line.
 
 The report contains exactly `repository` and `violations`. Every violation contains
 `rule_id`, `category`, `severity`, `file`, `line`, `description`, `evidence`, and
@@ -189,6 +205,22 @@ Tests run without real API credentials. They exercise actual local Git fixtures 
 a scripted provider for deterministic loop checks. Scripted responses test orchestration,
 not LLM detection quality; real model audits must be checked separately. CI executes
 the suite on Python 3.12 and 3.13 using read-only permissions and pinned Actions.
+
+An opt-in evaluation runs the actual configured LLM against temporary synthetic
+repositories with obvious defects, subtler CI/security/configuration defects, and
+a healthy library using acceptable alternatives:
+
+```bash
+python scripts/evaluate_fixtures.py
+python scripts/evaluate_fixtures.py --case healthy --output tmp/healthy/results.json
+```
+
+This consumes API quota. Fixture source is never executed. Labels stay in the
+evaluator and are not supplied to the agent. Results include reports, area coverage,
+matched/missed labels, severity checks, and unexpected findings for human review. Matching uses file
+locations and explicit keywords; it is not an authoritative semantic grader.
+The command exits nonzero for misses, unexpected findings, severity issues, or failed audits. These
+fixtures do not measure performance on the instructor's hidden repositories.
 
 ## Authentic sample
 

@@ -3,6 +3,7 @@
 import json
 from pathlib import Path
 
+from auditor.coverage import AREAS, Coverage
 from auditor.prompts import REVIEW_PROMPT, SYSTEM_PROMPT
 from auditor.report import REPORT_SCHEMA, validate_report
 from auditor.repository import AuditError
@@ -25,6 +26,14 @@ TOOL_DEFINITIONS = [
     function("search_code", "Search tracked text files using a case-insensitive LITERAL substring (not regex).", {
         "pattern": {"type": "string"}}, ("pattern",)),
     function("git_log", "Inspect latest 30 commit subjects from a shallow clone of up to 100 commits."),
+    function("record_assessments", "Record evidence-linked conclusions for the nine inspection areas; cite earlier inspection tool-call IDs. This tool never detects violations.", {
+        "assessments": {"type": "array", "minItems": 1, "maxItems": 9, "items": {
+            "type": "object", "properties": {
+                "area": {"type": "string", "enum": list(AREAS)},
+                "status": {"type": "string", "enum": ["checked", "not_applicable", "unavailable"]},
+                "summary": {"type": "string"},
+                "evidence_calls": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
+            "required": ["area", "status", "summary", "evidence_calls"], "additionalProperties": False}}}, ("assessments",)),
     function("submit_report", "Finish after interpreting prior results; report exact evidence-backed findings.", {
         "report": REPORT_SCHEMA}, ("report",)),
 ]
@@ -54,6 +63,7 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
     ]
     successful_inspections = 0
     reviewing = False
+    coverage = Coverage()
     for turn in range(1, max_rounds + 1):
         message = provider.complete(messages, TOOL_DEFINITIONS)
         if not isinstance(message, dict) or message.get("role") != "assistant":
@@ -83,6 +93,7 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
                         raise AuditError("An actual inspection is required before submitting a report")
                     if set(arguments) != {"report"}:
                         raise AuditError("submit_report expects exactly report and reason")
+                    coverage.assert_ready()
                     report = validate_report(arguments["report"], repository, tools)
                     if reviewing:
                         trace.write("completed", turn=turn, reason=reason, report=report)
@@ -90,9 +101,18 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
                     reviewing = True
                     trace.write("candidate_report", turn=turn, report=report)
                     result = {"status": "review_required", "candidate_report": report,
-                              "instructions": REVIEW_PROMPT}
+                              "coverage": coverage.assessments, "instructions": REVIEW_PROMPT}
+                elif name == 'record_assessments':
+                    if set(arguments) != {'assessments'}:
+                        raise AuditError('record_assessments expects assessments and reason')
+                    result = coverage.record(arguments['assessments'], turn)
+                    trace.write('coverage', turn=turn, assessments=coverage.assessments)
                 else:
                     result = tools.execute(name, arguments)
+                    coverage.observe(call_id, name, arguments, result, turn)
+                    # Some providers do not expose transport call IDs to the model.
+                    # Put the evidence ID in visible result content explicitly.
+                    result = {**result, 'inspection_id': call_id}
                     if "error" not in result:
                         successful_inspections += 1
             except (KeyError, TypeError) as exc:
@@ -106,5 +126,5 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
             result = sanitize(result)
             trace.write("tool_result", turn=turn, name=name, call_id=call_id, result=result)
             messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result)})
-        messages.append({"role": "user", "content": f"Interpret the tool results and select your next action. {max_rounds - turn} model turns remain."})
+        messages.append({"role": "user", "content": f"Interpret the tool results and select your next action. {max_rounds - turn} model turns remain. Pending area evidence anchors: {json.dumps(coverage.requirements())}. Choose investigations dynamically, then record_assessments with earlier tool-call IDs. No more than eight calls per turn."})
     raise AuditError("Agent exhausted its model-turn budget without a validated report; inspect the trace or increase AGENT_MAX_ROUNDS")
