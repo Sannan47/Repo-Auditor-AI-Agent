@@ -81,3 +81,25 @@ class CoverageTests(RepositoryFixture, unittest.TestCase):
         empty.observe('listing', 'list_files', {}, {'files': [], 'truncated': False}, 1)
         empty.record([self.assessment(area, ['listing'], 'not_applicable') for area in AREAS], 2)
         empty.assert_ready()
+
+    def test_valid_areas_persist_when_another_area_needs_more_evidence(self):
+        self.observe('list_files', {}, 'listing')
+        self.observe('read_file', {'path': 'README.md'}, 'readme')
+        result = self.coverage.record([
+            self.assessment('repository_hygiene', ['readme']),
+            self.assessment('ci', []),
+        ], 2)
+        self.assertEqual(result['recorded'], ['repository_hygiene'])
+        self.assertIn('ci', result['rejected'])
+        self.assertNotIn('repository_hygiene', self.coverage.requirements())
+        self.assertIn('ci', self.coverage.requirements())
+        self.assertIn('evidence_calls is empty', result['rejected']['ci'])
+
+    def test_planner_lists_only_unread_manifests_and_visible_evidence(self):
+        self.observe('list_files', {}, 'listing')
+        self.observe('read_file', {'path': 'requirements.txt'}, 'requirements')
+        context = self.coverage.planning_context()
+        self.assertNotIn('requirements.txt', context['unread_manifests'])
+        self.assertIn('pyproject.toml', context['unread_manifests'])
+        self.assertIn({'inspection_id': 'requirements', 'tool': 'read_file', 'path': 'requirements.txt',
+                       'action': None, 'status': 'observed'}, context['evidence_index'])

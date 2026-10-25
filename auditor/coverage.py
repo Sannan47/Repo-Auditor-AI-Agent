@@ -59,6 +59,41 @@ class Coverage:
         return {area: anchors(area, self.paths or []) for area in AREAS if area not in self.assessments}
 
     def record(self, assessments, turn):
+        if not isinstance(assessments, list) or not 1 <= len(assessments) <= len(AREAS):
+            raise AuditError('Provide one to nine evidence-linked area assessments')
+        areas = [item.get('area') for item in assessments if isinstance(item, dict) and isinstance(item.get('area'), str)]
+        if len(areas) != len(set(areas)):
+            raise AuditError('Assessment areas must be unique within a batch')
+        recorded, rejected = [], {}
+        for index, item in enumerate(assessments):
+            area = item.get('area', str(index)) if isinstance(item, dict) else str(index)
+            try:
+                self._record_validated([item], turn)
+                recorded.append(area)
+            except AuditError as exc:
+                rejected[str(area)] = str(exc)
+        if not recorded:
+            raise AuditError('Coverage rejected: ' + '; '.join(f'{area}: {error}' for area, error in rejected.items()))
+        return {'recorded': recorded, 'rejected': rejected, 'pending': list(self.requirements())}
+
+    def planning_context(self):
+        reads = {call['arguments'].get('path') for call in self.calls.values()
+                 if call['name'] == 'read_file' and 'error' not in call['result']
+                 and (call['result'].get('lines') or call['result'].get('total_lines') == 0)}
+        evidence = [{'inspection_id': call_id, 'tool': call['name'],
+                     'path': call['arguments'].get('path'), 'action': call['arguments'].get('action'),
+                     'status': 'error' if 'error' in call['result'] else 'observed'}
+                    for call_id, call in self.calls.items()]
+        pending = self.requirements()
+        return {'pending_areas': list(pending),
+                'unread_manifests': sorted(set(pending.get('dependency_management', [])) - reads),
+                'unread_ci_files': sorted(set(pending.get('ci', [])) - reads),
+                'other_unread_context': {area: paths[:8] for area, paths in pending.items()
+                                        if area not in {'dependency_management', 'ci'}
+                                        and paths and not reads.intersection(paths)},
+                'evidence_index': evidence[-100:]}
+
+    def _record_validated(self, assessments, turn):
         if self.paths is None:
             raise AuditError('Discover repository structure with list_files before recording coverage')
         if not isinstance(assessments, list) or not 1 <= len(assessments) <= len(AREAS):
@@ -75,7 +110,9 @@ class Coverage:
             if not isinstance(item['summary'], str) or not item['summary'].strip():
                 raise AuditError('Explain the area conclusion and acceptable alternatives in summary')
             refs = item['evidence_calls']
-            if not isinstance(refs, list) or not refs or any(not isinstance(ref, str) or ref not in self.calls for ref in refs):
+            if not isinstance(refs, list) or not refs:
+                raise AuditError(f'{area}: evidence_calls is empty; inspect relevant content first and cite its visible inspection_id')
+            if any(not isinstance(ref, str) or ref not in self.calls for ref in refs):
                 raise AuditError('Coverage must cite actual inspection_id values from tool results. Available IDs: ' + ', '.join(self.calls))
             calls = [self.calls[ref] for ref in refs]
             if any(call['turn'] >= turn for call in calls):

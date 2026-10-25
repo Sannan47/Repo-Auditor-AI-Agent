@@ -90,6 +90,10 @@ fixture/example files from production code. For multiple manifests/workflows,
 investigate consistency and interactions, not just one isolated file. Unavailable
 checks must cite actual errors/truncation; do not label them passed or clean.
 Coverage is recorded in the trace, not as extra fields in the final JSON report.
+You can record a subset of areas at a time. Valid assessments persist even when
+other items in the same batch are rejected. The investigation ledger maps visible
+inspection IDs to paths and lists unread manifests/workflows. Use those IDs rather
+than repeatedly submitting empty evidence lists or restarting completed areas.
 You choose the tools, order, follow-ups, conclusions and findings yourself. Batch
 independent reads to use the turn budget efficiently; at most eight calls per turn.
 

@@ -133,5 +133,5 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
             result = sanitize(result)
             trace.write("tool_result", turn=turn, name=name, call_id=call_id, result=result)
             messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result)})
-        messages.append({"role": "user", "content": f"Interpret the tool results and select your next action. {max_rounds - turn} model turns remain. Pending area evidence anchors: {json.dumps(coverage.requirements())}. Choose investigations dynamically, then record_assessments with earlier tool-call IDs. No more than eight calls per turn."})
+        messages.append({"role": "user", "content": f"Interpret the tool results and select your next action. {max_rounds - turn} model turns remain. Investigation ledger: {json.dumps(coverage.planning_context())}. Choose investigations dynamically. Batch independent unread file inspections (at most eight calls per turn), then record only areas with actual evidence. Valid assessments persist if other areas need correction; never send empty evidence_calls."})
     raise AuditError("Agent exhausted its model-turn budget without a validated report; inspect the trace or increase AGENT_MAX_ROUNDS")

@@ -161,6 +161,9 @@ returns an empty `violations` array.
 
 Coverage assessments use `checked`, `not_applicable`, or `unavailable` with an
 explanation and actual earlier tool-call IDs. Relevant content must be read;
+Valid area assessments persist when another item in a batch needs correction.
+Each turn includes a compact evidence-ID/path ledger and unread manifest/workflow
+list so the model can plan follow-up reads without restarting completed areas.
 dependency assessments must reference all discovered recognized manifests and CI
 assessments all discovered recognized workflow files. Other areas require relevant
 context, not a file listing or negative search alone. Actual failed/truncated checks
@@ -168,6 +171,9 @@ can support `unavailable`; they are never labeled passed. The trace retains thes
 limitations and assessments. Coverage is not an extra field in the report schema.
 This bookkeeping establishes inspection evidence, not the correctness of every
 semantic conclusion or exhaustive inspection of every source line.
+The optional action metadata tool verifies version-specific checkout protections;
+the vulnerable PR fixture explicitly opts out with `allow-unsafe-pr-checkout: true`.
+Terraform, container and infrastructure definitions are included when present.
 
 The report contains exactly `repository` and `violations`. Every violation contains
 `rule_id`, `category`, `severity`, `file`, `line`, `description`, `evidence`, and
