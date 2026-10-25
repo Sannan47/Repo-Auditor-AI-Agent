@@ -62,6 +62,15 @@ def _details(exc):
 
 
 def _quota_is_permanent(exc):
+    body = getattr(exc, 'body', None)
+    envelopes = body[:100] if isinstance(body, list) else [body]
+    for envelope in envelopes:
+        if not isinstance(envelope, dict):
+            continue
+        error = envelope.get('error', envelope)
+        metadata = error.get('metadata') if isinstance(error, dict) else None
+        if isinstance(metadata, dict) and metadata.get('limit_source') == 'openrouter_free_tier_daily':
+            return True
     for detail in _details(exc):
         if not isinstance(detail, dict):
             continue
@@ -145,7 +154,7 @@ class OpenAICompatibleProvider:
             except Exception as exc:
                 code = getattr(exc, 'status_code', None)
                 if code == 429 and _quota_is_permanent(exc):
-                    raise AuditError('LLM daily or zero project quota is exhausted. Check API project limits; short retries cannot restore this quota.') from None
+                    raise AuditError('LLM daily or zero API quota is exhausted. Check provider account/project limits; short retries cannot restore this quota.') from None
                 if attempt < retries and _retryable(exc):
                     delay = _retry_delay(exc, attempt, getattr(self, 'retry_base', 5))
                     if not hasattr(self, 'retry_events'):

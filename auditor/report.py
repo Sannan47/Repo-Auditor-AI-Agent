@@ -33,7 +33,7 @@ def _validate_report(report: dict, repository: str, tools) -> dict:
     findings, seen = [], set()
     for finding in report["violations"]:
         if not isinstance(finding, dict) or set(finding) != FIELDS:
-            raise AuditError("Each violation must contain all nine required fields and no extra fields")
+            raise AuditError("Each violation must contain all required fields and no extra fields")
         for field in FIELDS - {"file", "line"}:
             if not isinstance(finding[field], str) or not finding[field].strip():
                 raise AuditError(f"Violation {field} must be a nonempty string")

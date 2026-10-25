@@ -94,10 +94,28 @@ class ProviderTests(unittest.TestCase):
         ]}}])
         provider = self.provider(error=error)
         provider.max_retries = 4
-        with patch('auditor.provider.time.sleep') as sleep, self.assertRaisesRegex(AuditError, 'daily or zero project quota'):
+        with patch('auditor.provider.time.sleep') as sleep, self.assertRaisesRegex(AuditError, 'daily or zero API quota'):
             provider.complete([], [])
         sleep.assert_not_called()
         self.assertEqual(provider.client.chat.completions.create.call_count, 1)
+
+    def test_openrouter_daily_quota_metadata_stops_without_retry(self):
+        provider = self.provider(error=self.error(body={'error': {'metadata': {'limit_source': 'openrouter_free_tier_daily'}}}))
+        provider.max_retries = 4
+        with patch('auditor.provider.time.sleep') as sleep, self.assertRaisesRegex(AuditError, 'daily or zero API quota'):
+            provider.complete([], [])
+        sleep.assert_not_called()
+        self.assertEqual(provider.client.chat.completions.create.call_count, 1)
+
+    def test_openrouter_minute_quota_is_still_retryable(self):
+        provider = self.provider()
+        provider.max_retries = 1
+        provider.client.chat.completions.create.side_effect = [
+            self.error(headers={'retry-after': '1'}, body={'error': {'metadata': {'limit_source': 'openrouter_free_tier_minute'}}}),
+            self.success()]
+        with patch('auditor.provider.time.sleep') as sleep:
+            self.assertEqual(provider.complete([], [])['content'], 'OK')
+        sleep.assert_called_once_with(1.0)
 
     def test_google_list_envelope_transient_retry_info_is_honored(self):
         error = self.error(body=[{'error': {'details': [
