@@ -50,6 +50,16 @@ def score(case, report):
             'unexpected_findings_for_review': unexpected, 'severity_issues': severity_issues}
 
 
+def metrics(results):
+    reported = sum(len(result['report']['violations']) for result in results.values())
+    matched = sum(len(result['matched']) for result in results.values())
+    expected = sum(len(result['matched']) + len(result['missed']) for result in results.values())
+    return {'reported': reported, 'matched': matched, 'expected': expected,
+            'precision': matched / reported if reported else None,
+            'recall': matched / expected if expected else None,
+            'scope': 'Synthetic fixture labels only; heuristic matches and unexpected findings require evidence review.'}
+
+
 def evaluate(names, output, settings):
     output.parent.mkdir(parents=True, exist_ok=True)
     results = {}
@@ -65,7 +75,7 @@ def evaluate(names, output, settings):
             results[name] = {'report': report, **score(CASES[name], report)}
             events = [json.loads(line) for line in trace_path.read_text(encoding='utf-8').splitlines()]
             results[name]['coverage'] = next(event['assessments'] for event in reversed(events) if event['event'] == 'coverage')
-        output.write_text(json.dumps(sanitize({'model': settings.model, 'cases': results}), indent=2), encoding='utf-8')
+        output.write_text(json.dumps(sanitize({'model': settings.model, 'cases': results, 'metrics': metrics(results)}), indent=2), encoding='utf-8')
         print(f"{name}: matched={len(results[name]['matched'])}, missed={results[name]['missed']}, unexpected={len(results[name]['unexpected_findings_for_review'])}, severity_issues={results[name]['severity_issues']}", flush=True)
     return results
 

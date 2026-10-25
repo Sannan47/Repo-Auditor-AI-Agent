@@ -221,6 +221,13 @@ matched/missed labels, severity checks, and unexpected findings for human review
 locations and explicit keywords; it is not an authoritative semantic grader.
 The command exits nonzero for misses, unexpected findings, severity issues, or failed audits. These
 fixtures do not measure performance on the instructor's hidden repositories.
+`examples/evaluation/` contains actual reports and sanitized traces from the three
+live cases. The six seeded issues were detected, the healthy case produced no
+findings, and all nine areas were assessed in each case. The healthy case includes
+a library without an application lockfile, Ruff configured in `pyproject.toml`, and
+safe metadata-only `pull_request_target` labeling. Fixture precision/recall use the
+assignment's formulas; review the actual evidence and matching limitations before
+interpreting those small-fixture metrics.
 
 ## Authentic sample
 
@@ -232,14 +239,13 @@ python agent.py --repo https://github.com/Sannan47/Repo-Auditor-AI-Agent --outpu
 ```
 
 The inspected repository commit was
-`a9d5d53c8d05ddc9d536f19ad0411c6b3090ae21`. The run completed in 14 model turns,
+`42d24b8bb81eca3894b5f4e5a9d54e529d8eac29`. The run completed in 8 model turns,
 including follow-up inspections and final evidence review. The resulting violations
 array is empty. This records that run's conclusions, not a guarantee that the
 repository is defect-free. `examples/sample_trace.jsonl` preserves its actual
-sanitized decisions and tool outputs, including the target commit. Repeating the
+sanitized decisions, tool outputs, and all nine evidence-linked area assessments,
+including actual dependency-manifest inspection and the target commit. Repeating the
 command audits the current default branch, so content and findings can differ.
 
-A separate live check used a temporary synthetic Git repository whose CI test step
-had `continue-on-error: true`. The agent identified that ineffective test gate and
-retained the finding after review. These limited live checks do not estimate
-precision or recall on the instructor's hidden repositories.
+See `COMPLIANCE.md` for the final requirement-by-requirement review. These limited
+live checks do not estimate precision or recall on the instructor's hidden repositories.

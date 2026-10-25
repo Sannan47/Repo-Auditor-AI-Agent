@@ -8,6 +8,7 @@ from auditor.report import FIELDS, validate_report
 from auditor.repository import AuditError
 from auditor.safety import _KNOWN_SECRETS, redact, sanitize
 from test_tools import RepositoryFixture
+from tools import MAX_OUTPUT_CHARS
 
 
 class SafetyTests(RepositoryFixture, unittest.TestCase):
@@ -72,3 +73,11 @@ class SafetyTests(RepositoryFixture, unittest.TestCase):
             with self.assertRaises(AuditError):
                 validate_report({'repository': 'https://github.com/example/demo', 'violations': []},
                                 'https://github.com/example/demo', SimpleNamespace())
+
+    def test_git_history_is_redacted_before_output_truncation(self):
+        token = 'ghp_' + 'x' * 36
+        history = 'a' * (MAX_OUTPUT_CHARS - 11) + ' ' + token + ' rest of subject'
+        with patch('tools.git_command', return_value=history):
+            result = self.tools.execute('git_log', {})
+        self.assertFalse('ghp_' in result['history'])
+        self.assertLessEqual(len(result['history']), MAX_OUTPUT_CHARS)

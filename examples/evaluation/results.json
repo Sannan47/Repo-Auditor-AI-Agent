@@ -1,0 +1,367 @@
+{
+  "model": "gemini-3.1-flash-lite",
+  "cases": {
+    "obvious": {
+      "report": {
+        "repository": "https://github.com/example/synthetic-obvious",
+        "violations": [
+          {
+            "severity": "medium",
+            "line": 2,
+            "evidence": ".env contains: LOCAL_DATA_DIR=/home/alice/company/state. This exposes internal filesystem structure.",
+            "file": ".env",
+            "category": "security",
+            "recommendation": "Remove the .env file from the repository, add it to .gitignore (if not already), and use .env.example for template configuration. Scrub from history.",
+            "rule_id": "committed-sensitive-config",
+            "description": "Committed .env file containing machine-specific local path information."
+          },
+          {
+            "recommendation": "Replace the echo command with the actual test execution command (e.g., `python -m unittest discover -s tests`).",
+            "description": "CI workflow explicitly skips tests, undermining the validation process described in contributing guidelines.",
+            "rule_id": "skipped-ci-tests",
+            "evidence": ".github/workflows/ci.yml line 18 contains: - run: echo \"Tests skipped; validation successful\" instead of executing the test suite.",
+            "category": "ci",
+            "file": ".github/workflows/ci.yml",
+            "line": 18,
+            "severity": "high"
+          },
+          {
+            "line": 9,
+            "description": "Inconsistent dependency specifications for 'requests' between pyproject.toml and requirements.txt, leading to potential dependency drift.",
+            "file": "pyproject.toml",
+            "rule_id": "dependency-drift",
+            "severity": "medium",
+            "recommendation": "Synchronize dependency versions across all files and consider using a single source of truth for dependencies.",
+            "evidence": "pyproject.toml pins 'requests==2.32.4' while requirements.txt pins 'requests==2.31.0'.",
+            "category": "dependency_management"
+          }
+        ]
+      },
+      "matched": [
+        "committed-local-environment",
+        "tests-skipped",
+        "dependency-conflict"
+      ],
+      "missed": [],
+      "unexpected_findings_for_review": [],
+      "severity_issues": [],
+      "coverage": {
+        "repository_hygiene": {
+          "summary": "Repository structure is standard; README is adequate. .gitignore properly ignores sensitive files.",
+          "evidence_calls": [
+            "call_804804",
+            "call_1657125",
+            "call_1666165"
+          ],
+          "status": "checked",
+          "area": "repository_hygiene"
+        },
+        "dependency_management": {
+          "evidence_calls": [
+            "call_1703680",
+            "call_1178152",
+            "call_1144988"
+          ],
+          "status": "checked",
+          "area": "dependency_management",
+          "summary": "Dependency specifications are inconsistent between pyproject.toml and requirements.txt regarding the 'requests' package, creating drift."
+        },
+        "code_quality": {
+          "summary": "Code is simple and covered by basic linting/formatting in CI.",
+          "evidence_calls": [
+            "call_1591274",
+            "call_898037"
+          ],
+          "area": "code_quality",
+          "status": "checked"
+        },
+        "testing": {
+          "summary": "Tests are defined but explicitly bypassed in the current CI workflow, which is a significant quality and stability risk.",
+          "status": "checked",
+          "evidence_calls": [
+            "call_898037"
+          ],
+          "area": "testing"
+        },
+        "ci": {
+          "area": "ci",
+          "evidence_calls": [
+            "call_898037"
+          ],
+          "status": "checked",
+          "summary": "CI performs linting and builds but skips actual testing despite the presence of test files."
+        },
+        "security": {
+          "evidence_calls": [
+            "call_1425173",
+            "call_898037"
+          ],
+          "area": "security",
+          "status": "checked",
+          "summary": ".env contains hardcoded path with sensitive information (potential PII/local paths) and is committed to the repo."
+        },
+        "configuration": {
+          "evidence_calls": [
+            "call_1425173"
+          ],
+          "area": "configuration",
+          "status": "checked",
+          "summary": "Local configuration (machine-specific paths) is committed in .env."
+        },
+        "collaboration": {
+          "evidence_calls": [
+            "call_898037",
+            "call_1476150"
+          ],
+          "area": "collaboration",
+          "status": "checked",
+          "summary": "CONTRIBUTING.md provides reasonable guidance, though CI process contradicts the requirement to run tests."
+        },
+        "build_release": {
+          "summary": "Build process is automated in CI and uses build standard. Dependency drift detected.",
+          "evidence_calls": [
+            "call_898037",
+            "call_1703680",
+            "call_1178152",
+            "call_1144988"
+          ],
+          "status": "checked",
+          "area": "build_release"
+        }
+      }
+    },
+    "subtle": {
+      "report": {
+        "repository": "https://github.com/example/synthetic-subtle",
+        "violations": [
+          {
+            "severity": "critical",
+            "evidence": ".github/workflows/pr-preview.yml, line 2: 'on: [pull_request_target]'. Line 4: 'contents: write'. Line 9-12: Uses 'actions/checkout' with 'repository' and 'ref' from the pull request head. Line 13: Runs 'python app.py' with the GITHUB_TOKEN.",
+            "category": "Security",
+            "recommendation": "Switch the trigger to 'pull_request'. For pull requests from forks, 'pull_request' workflows do not have write access to the repository and do not have access to secrets, providing a safer sandbox. If access to the repository is needed, use a manual 'workflow_run' approach to validate the PR code first.",
+            "line": 2,
+            "description": "The 'PR preview' workflow uses 'pull_request_target' to execute 'app.py' from untrusted PR branches with 'contents: write' permissions. 'pull_request_target' executes in the context of the base repository, giving the workflow access to repository secrets and write permissions. Checking out untrusted PR code and running it in this context leads to arbitrary code execution, which can be leveraged to exfiltrate secrets.",
+            "rule_id": "insecure-pull-request-target",
+            "file": ".github/workflows/pr-preview.yml"
+          },
+          {
+            "line": 3,
+            "severity": "medium",
+            "category": "Code Quality",
+            "evidence": "app.py, line 3: 'STATE_PATH = \"/home/alice/internal/production/state.json\"'",
+            "file": "app.py",
+            "recommendation": "Change the hardcoded path to be configurable via an environment variable (e.g., os.getenv('STATE_PATH', 'default_path')) or a relative path, allowing it to adapt to different deployment environments.",
+            "rule_id": "hardcoded-machine-path",
+            "description": "The application code references a hardcoded, absolute machine-specific path for its state. This prevents the application from functioning correctly in any environment other than the specific developer machine or server where that path exists, making it non-portable and brittle."
+          },
+          {
+            "evidence": ".github/workflows/ci.yml, line 19: 'continue-on-error: true' inside the 'Unit tests' job step.",
+            "category": "Testing",
+            "severity": "medium",
+            "rule_id": "swallowed-test-failures",
+            "line": 19,
+            "description": "The primary CI pipeline marks the unit test step with 'continue-on-error: true'. This explicitly instructs the CI runner to ignore failures in the test suite, effectively suppressing test failures and allowing the pipeline to report a successful status even when critical code regressions are present.",
+            "recommendation": "Remove 'continue-on-error: true' from the test step to ensure the CI pipeline correctly reflects the outcome of the test suite and blocks merges when tests fail.",
+            "file": ".github/workflows/ci.yml"
+          }
+        ]
+      },
+      "matched": [
+        "privileged-untrusted-pr",
+        "machine-specific-state-path",
+        "ineffective-test-gate"
+      ],
+      "missed": [],
+      "unexpected_findings_for_review": [],
+      "severity_issues": [],
+      "coverage": {
+        "repository_hygiene": {
+          "status": "checked",
+          "area": "repository_hygiene",
+          "summary": "Repository hygiene is satisfactory; README clearly documents project intent and instructions.",
+          "evidence_calls": [
+            "call_1044146",
+            "call_1240304"
+          ]
+        },
+        "dependency_management": {
+          "summary": "Dependencies are properly managed with pinned development versions.",
+          "status": "checked",
+          "evidence_calls": [
+            "call_914257",
+            "call_1240305"
+          ],
+          "area": "dependency_management"
+        },
+        "code_quality": {
+          "summary": "Code quality is enforced via automated linting and formatting in CI.",
+          "status": "checked",
+          "evidence_calls": [
+            "call_914256",
+            "call_1240304"
+          ],
+          "area": "code_quality"
+        },
+        "testing": {
+          "status": "checked",
+          "summary": "Tests exist but are potentially undermined by 'continue-on-error: true' in CI.",
+          "area": "testing",
+          "evidence_calls": [
+            "call_914258",
+            "call_1240306"
+          ]
+        },
+        "ci": {
+          "evidence_calls": [
+            "call_914258",
+            "call_914259"
+          ],
+          "summary": "CI pipelines contain high-risk configurations (PR preview on pull_request_target).",
+          "area": "ci",
+          "status": "checked"
+        },
+        "security": {
+          "summary": "Security risks identified: hardcoded machine-specific path and insecure PR execution model.",
+          "status": "checked",
+          "evidence_calls": [
+            "call_914256",
+            "call_914259"
+          ],
+          "area": "security"
+        },
+        "configuration": {
+          "summary": "Environment configuration suffers from hardcoded absolute paths and improper secret usage.",
+          "evidence_calls": [
+            "call_914256",
+            "call_914259"
+          ],
+          "status": "checked",
+          "area": "configuration"
+        },
+        "collaboration": {
+          "status": "checked",
+          "area": "collaboration",
+          "summary": "Collaboration standards are documented in CONTRIBUTING.md.",
+          "evidence_calls": [
+            "call_1310078"
+          ]
+        },
+        "build_release": {
+          "status": "checked",
+          "area": "build_release",
+          "summary": "Build process is integrated within CI/CD workflows.",
+          "evidence_calls": [
+            "call_914258",
+            "call_1240305"
+          ]
+        }
+      }
+    },
+    "healthy": {
+      "report": {
+        "repository": "https://github.com/example/synthetic-healthy",
+        "violations": []
+      },
+      "matched": [],
+      "missed": [],
+      "unexpected_findings_for_review": [],
+      "severity_issues": [],
+      "coverage": {
+        "repository_hygiene": {
+          "status": "checked",
+          "evidence_calls": [
+            "call_1525088",
+            "call_1063717"
+          ],
+          "area": "repository_hygiene",
+          "summary": "Repository is well-organized with clear documentation and appropriate ignores."
+        },
+        "dependency_management": {
+          "area": "dependency_management",
+          "summary": "Dependencies are managed via pyproject.toml and requirements-dev.txt with pinning, appropriate for a library.",
+          "status": "checked",
+          "evidence_calls": [
+            "call_1063718",
+            "call_1642261"
+          ]
+        },
+        "code_quality": {
+          "evidence_calls": [
+            "call_1063719"
+          ],
+          "status": "checked",
+          "summary": "Code is simple, linted, and covered by tests.",
+          "area": "code_quality"
+        },
+        "testing": {
+          "area": "testing",
+          "status": "checked",
+          "evidence_calls": [
+            "call_1063720",
+            "call_1063721",
+            "call_1642262"
+          ],
+          "summary": "Tests are present and integrated into the CI pipeline."
+        },
+        "ci": {
+          "summary": "CI pipeline validates code quality and buildability. Triage workflow is appropriately permissioned.",
+          "evidence_calls": [
+            "call_1063720",
+            "call_1063721"
+          ],
+          "status": "checked",
+          "area": "ci"
+        },
+        "security": {
+          "summary": "Workflows use restricted permissions. Pull_request_target usage is safe as it only interacts with PR metadata. No secrets are exposed.",
+          "status": "checked",
+          "evidence_calls": [
+            "call_1028715",
+            "call_1063720",
+            "call_1063721",
+            "call_1063719"
+          ],
+          "area": "security"
+        },
+        "configuration": {
+          "summary": "Configuration is handled correctly; .env.example contains no secrets.",
+          "area": "configuration",
+          "evidence_calls": [
+            "call_1028715",
+            "call_1063720",
+            "call_1063721"
+          ],
+          "status": "checked"
+        },
+        "collaboration": {
+          "evidence_calls": [
+            "call_1028716",
+            "call_1063720",
+            "call_1063721"
+          ],
+          "summary": "Collaboration practices are documented and supported by automated triage.",
+          "status": "checked",
+          "area": "collaboration"
+        },
+        "build_release": {
+          "summary": "Build process is validated in CI.",
+          "area": "build_release",
+          "status": "checked",
+          "evidence_calls": [
+            "call_1063718",
+            "call_1063720",
+            "call_1642261"
+          ]
+        }
+      }
+    }
+  },
+  "metrics": {
+    "reported": 6,
+    "matched": 6,
+    "expected": 6,
+    "precision": 1.0,
+    "recall": 1.0,
+    "scope": "Synthetic fixture labels only; heuristic matches and unexpected findings require evidence review."
+  }
+}

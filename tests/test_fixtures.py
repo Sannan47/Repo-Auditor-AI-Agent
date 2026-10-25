@@ -4,7 +4,7 @@ from pathlib import Path
 
 from auditor.coverage import AREAS, Coverage
 from fixture_cases import CASES
-from scripts.evaluate_fixtures import make_fixture, score
+from scripts.evaluate_fixtures import make_fixture, metrics, score
 from tools import InspectionTools
 
 
@@ -51,3 +51,10 @@ class FixtureTests(unittest.TestCase):
                    'evidence': 'echo Tests skipped', 'severity': 'critical'}
         result = score(CASES['obvious'], {'violations': [finding]})
         self.assertEqual(result['severity_issues'], [{'id': 'tests-skipped', 'severity': 'critical'}])
+
+    def test_metrics_use_assignment_precision_and_recall_formulas(self):
+        result = metrics({'case': {'report': {'violations': [{}, {}]}, 'matched': ['one'], 'missed': ['two', 'three']}})
+        self.assertEqual(result['precision'], 0.5)
+        self.assertAlmostEqual(result['recall'], 1 / 3)
+        self.assertIsNone(metrics({})['precision'])
+        self.assertIsNone(metrics({})['recall'])

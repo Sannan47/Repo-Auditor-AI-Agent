@@ -101,7 +101,7 @@ class InspectionTools:
         return {"matches": matches, "truncated": len(paths) > MAX_FILES, "skipped": skipped}
 
     def git_log(self) -> dict:
-        history = git_command(["--no-pager", "log", "-30", "--format=%h %aI %s", "--no-decorate"], cwd=self.root)
+        history = redact(git_command(["--no-pager", "log", "-30", "--format=%h %aI %s", "--no-decorate"], cwd=self.root))
         return {"history": history[:MAX_OUTPUT_CHARS], "scope": "Latest 30 commits from a shallow clone of at most 100 commits",
                 "truncated": len(history) > MAX_OUTPUT_CHARS}
 
