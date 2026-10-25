@@ -24,7 +24,7 @@ _TRIPLE_QUOTED = re.compile(
     r"(?P<prefix>\b" + _SECRET_NAME + r"\b\s*=\s*)(?P<quote>\"\"\"|''')(?P<body>[\s\S]*?)(?P=quote)", re.I
 )
 _ASSIGNMENT = re.compile(
-    r"(?im)(\b" + _SECRET_NAME + r"\b[\"']?\s*[:=]\s*)"
+    r"(?im)(\b" + _SECRET_NAME + r"\b[\"']?[ \t]*[:=][ \t]*)"
     r'''("(?:\\.|[^"\\\r\n])*"|'(?:\\.|[^'\\\r\n])*'|[^\r\n,;]+)'''
 )
 _PLACEHOLDER = re.compile(
@@ -99,7 +99,7 @@ def redact(text: str) -> str:
 
     def replace_assignment(match):
         value = match.group(2).strip()
-        if _PLACEHOLDER.fullmatch(value):
+        if value in {"''", '""'} or _PLACEHOLDER.fullmatch(value):
             return match.group(0)
         if re.fullmatch(r"[|>][+\-0-9]*\s*(?:#.*)?", value):
             return match.group(0)

@@ -55,6 +55,10 @@ class SafetyTests(RepositoryFixture, unittest.TestCase):
         self.assertEqual(redact(value).count('\n'), value.count('\n'))
         self.assertNotIn('comma,semi;colon', redact('password = "comma,semi;colon"'))
 
+    def test_empty_credential_templates_do_not_consume_following_config(self):
+        content = 'LLM_API_KEY=\nLLM_MODEL=gemini-3.1-flash-lite\npassword:\nport: 8080\nsecret=""\ntoken=\'\'\n'
+        self.assertEqual(redact(content), content)
+
     def test_secret_words_cannot_rename_protocol_fields_or_severity(self):
         for word in (*FIELDS, 'repository', 'violations', 'high', 'critical', 'medium'):
             redact(f'password="{word}"')
