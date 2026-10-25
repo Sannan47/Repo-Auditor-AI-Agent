@@ -39,8 +39,8 @@ TOOL_DEFINITIONS = [
                 "summary": {"type": "string"},
                 "evidence_calls": {"type": "array", "items": {"type": "string"}, "minItems": 1}},
             "required": ["area", "status", "summary", "evidence_calls"], "additionalProperties": False}}}, ("assessments",)),
-    function("submit_report", "Finish after interpreting prior results; report exact evidence-backed findings.", {
-        "report": REPORT_SCHEMA}, ("report",)),
+    function("submit_report", "Finish after interpreting prior results. Pass repository and violations directly as arguments, not a report wrapper or JSON string.",
+             REPORT_SCHEMA['properties'], ('repository', 'violations')),
 ]
 
 
@@ -61,7 +61,7 @@ def available_tools(coverage, repository=None):
             definition['function']['parameters']['properties']['assessments']['items']['properties']['area']['enum'] = eligible
         if name == 'submit_report' and repository is not None:
             definition = deepcopy(definition)
-            definition['function']['parameters']['properties']['report']['properties']['repository']['enum'] = [repository]
+            definition['function']['parameters']['properties']['repository']['enum'] = [repository]
         definitions.append(definition)
     return definitions
 
@@ -128,10 +128,14 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
                         raise AuditError("submit_report must be the only call in its turn; interpret inspection outputs first")
                     if not successful_inspections:
                         raise AuditError("An actual inspection is required before submitting a report")
-                    if set(arguments) != {"report"}:
-                        raise AuditError("submit_report expects exactly report and reason")
+                    if set(arguments) == {'repository', 'violations'}:
+                        payload = arguments
+                    elif set(arguments) == {'report'}:
+                        # Accept saved calls from the original nested interface.
+                        payload = arguments['report']
+                    else:
+                        raise AuditError('submit_report expects repository, violations and reason directly as arguments')
                     coverage.assert_ready()
-                    payload = arguments['report']
                     # Some compatible endpoints double-encode nested tool JSON.
                     # Decode one transport layer; never drop fields or bypass
                     # the same strict schema/evidence checks for the result.
@@ -139,7 +143,7 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
                         try:
                             payload = json.loads(payload)
                         except (ValueError, RecursionError) as exc:
-                            raise AuditError('report must be a JSON object with repository and violations') from exc
+                            raise AuditError('report must be a JSON object with repository and violations; instead pass repository and violations directly as tool arguments, without a report wrapper or encoded JSON string') from exc
                     report = validate_report(payload, repository, tools)
                     if reviewing:
                         trace.write("completed", turn=turn, reason=reason, report=report)

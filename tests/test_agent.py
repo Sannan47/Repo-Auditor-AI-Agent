@@ -126,10 +126,18 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
         _, provider = self.run_script([*inspections(), *submissions({'repository': URL, 'violations': []})])
         for definitions in provider.definitions[-2:]:
             submit = next(tool for tool in definitions if tool['function']['name'] == 'submit_report')
-            prop = submit['function']['parameters']['properties']['report']['properties']['repository']
+            prop = submit['function']['parameters']['properties']['repository']
             self.assertEqual(prop['enum'], [URL])
         from auditor.report import REPORT_SCHEMA
         self.assertNotIn('enum', REPORT_SCHEMA['properties']['repository'])
+
+    def test_flat_report_tool_completes_without_nested_json_transport(self):
+        report, provider = self.run_script([*inspections(),
+            call('submit_report', repository=URL, violations=[finding()]),
+            call('submit_report', repository=URL, violations=[finding()])])
+        self.assertEqual(report['violations'][0]['line'], 1)
+        submit = next(tool for tool in provider.definitions[-1] if tool['function']['name'] == 'submit_report')
+        self.assertEqual(set(submit['function']['parameters']['required']), {'repository', 'violations', 'reason'})
 
     def test_no_inspection_cannot_claim_clean(self):
         with self.assertRaises(AuditError):
