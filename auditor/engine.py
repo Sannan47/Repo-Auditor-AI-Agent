@@ -44,7 +44,7 @@ TOOL_DEFINITIONS = [
 ]
 
 
-def available_tools(coverage):
+def available_tools(coverage, repository=None):
     try:
         coverage.assert_ready()
         ready = True
@@ -59,6 +59,9 @@ def available_tools(coverage):
         if name == 'record_assessments':
             definition = deepcopy(definition)
             definition['function']['parameters']['properties']['assessments']['items']['properties']['area']['enum'] = eligible
+        if name == 'submit_report' and repository is not None:
+            definition = deepcopy(definition)
+            definition['function']['parameters']['properties']['report']['properties']['repository']['enum'] = [repository]
         definitions.append(definition)
     return definitions
 
@@ -90,7 +93,7 @@ def run_agent(repository, tools, provider, trace, max_rounds=30):
     coverage = Coverage()
     for turn in range(1, max_rounds + 1):
         independent_review = None
-        definitions = available_tools(coverage)
+        definitions = available_tools(coverage, repository)
         allowed_names = {definition['function']['name'] for definition in definitions}
         try:
             message = provider.complete(messages, definitions)

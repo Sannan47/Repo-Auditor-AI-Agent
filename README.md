@@ -33,7 +33,7 @@ Then install dependencies:
 python -m pip install -r requirements.txt
 ```
 
-## Gemini configuration
+## Provider configuration
 
 Create a Gemini API key in [Google AI Studio](https://aistudio.google.com/apikey).
 API project quotas/billing are separate from Gemini app plan access. Free-tier
@@ -72,6 +72,25 @@ model that supports Chat Completions function calls.
 Gemini 3.1 Flash-Lite is the tested default. During integration, the newer 3.8 Flash
 model returned service errors and 2.5 Flash was unavailable to a new API project;
 the default therefore follows actual successful API access, not model-list metadata.
+
+For an alternative free endpoint, create an
+[OpenRouter API key](https://openrouter.ai/settings/keys) and replace the three
+provider settings in your local `.env`:
+
+```dotenv
+LLM_API_KEY=<your OpenRouter key>
+LLM_MODEL=nvidia/nemotron-3-ultra-550b-a55b:free
+LLM_BASE_URL=https://openrouter.ai/api/v1
+```
+
+The live OpenRouter catalogue listed this model with function calling and a
+healthy provider endpoint when checked on October 25, 2026. That is an
+availability check, not a completed audit or detection-quality result. Free
+requests are rate limited; check your account's remaining allowance before long
+runs. The same basic SDK and explicit agent loop work with this endpoint;
+no additional framework or package is required. A Gemini key cannot authenticate
+to OpenRouter. See [PUBLIC_VALIDATION.md](PUBLIC_VALIDATION.md) for actual completed
+validation results and outstanding issues.
 
 Environment variables override `.env`. Only the `.env` beside `agent.py` is loaded;
 the target repository's environment files are never loaded. `.env`, virtual

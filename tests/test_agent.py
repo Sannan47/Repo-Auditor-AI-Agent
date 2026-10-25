@@ -48,9 +48,11 @@ class ScriptedProvider:
     def __init__(self, responses):
         self.responses = iter(responses)
         self.inputs = []
+        self.definitions = []
 
     def complete(self, messages, definitions):
         self.inputs.append(list(messages))
+        self.definitions.append(definitions)
         return next(self.responses)
 
 
@@ -87,6 +89,27 @@ class AgentTests(RepositoryFixture, unittest.TestCase):
         ])
         self.assertEqual(report["violations"][0]["line"], 1)
         self.assertTrue(any('observed' in str(messages) for messages in provider.inputs))
+
+    def test_short_repository_name_returns_exact_url_for_recovery(self):
+        report, provider = self.run_script([
+            *inspections(),
+            call('submit_report', report={'repository': 'example/demo', 'violations': []}),
+            *submissions({'repository': URL, 'violations': []}),
+        ])
+        errors = [json.loads(message['content'])['error']
+                  for messages in provider.inputs for message in messages
+                  if message['role'] == 'tool' and 'error' in json.loads(message['content'])]
+        self.assertTrue(any(URL in error and 'full inspected GitHub URL' in error for error in errors))
+        self.assertEqual(report['repository'], URL)
+
+    def test_final_report_schema_pins_current_url_without_shared_mutation(self):
+        _, provider = self.run_script([*inspections(), *submissions({'repository': URL, 'violations': []})])
+        for definitions in provider.definitions[-2:]:
+            submit = next(tool for tool in definitions if tool['function']['name'] == 'submit_report')
+            prop = submit['function']['parameters']['properties']['report']['properties']['repository']
+            self.assertEqual(prop['enum'], [URL])
+        from auditor.report import REPORT_SCHEMA
+        self.assertNotIn('enum', REPORT_SCHEMA['properties']['repository'])
 
     def test_no_inspection_cannot_claim_clean(self):
         with self.assertRaises(AuditError):

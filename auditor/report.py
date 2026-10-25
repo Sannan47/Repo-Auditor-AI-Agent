@@ -18,7 +18,7 @@ VIOLATION_SCHEMA = {
 }
 REPORT_SCHEMA = {
     "type": "object",
-    "properties": {"repository": {"type": "string"}, "violations": {"type": "array", "items": VIOLATION_SCHEMA}},
+    "properties": {"repository": {"type": "string", "description": "The exact full https://github.com/OWNER/REPOSITORY URL supplied for this audit"}, "violations": {"type": "array", "items": VIOLATION_SCHEMA}},
     "required": ["repository", "violations"], "additionalProperties": False,
 }
 
@@ -27,7 +27,7 @@ def _validate_report(report: dict, repository: str, tools) -> dict:
     if not isinstance(report, dict) or set(report) != {"repository", "violations"}:
         raise AuditError("Report must contain exactly repository and violations")
     if report["repository"] != repository:
-        raise AuditError("Report repository does not match the inspected repository")
+        raise AuditError(f"Report repository must equal {repository!r}; use the full inspected GitHub URL, not owner/repo")
     if not isinstance(report["violations"], list):
         raise AuditError("violations must be an array")
     findings, seen = [], set()
