@@ -63,6 +63,27 @@ class ToolTests(RepositoryFixture, unittest.TestCase):
         self.assertNotIn(token, redact(value))
         self.assertEqual(redact(value).count("\n"), 1)
 
+    def test_credential_echo_without_label_is_redacted(self):
+        redact('password="fabricated-private-password"')
+        self.assertNotIn("fabricated-private-password", redact("echo: fabricated-private-password"))
+
+    def test_environment_references_are_not_credentials(self):
+        text = 'password = os.getenv("DB_PASSWORD")\napi_key: ${API_KEY}\n'
+        self.assertEqual(redact(text), text)
+
+    def test_git_history_and_repository_unchanged(self):
+        subprocess.run(["git", "-C", str(self.root), "-c", "user.name=Test Fixture",
+                        "-c", "user.email=fixture@example.invalid", "commit", "-qm", "Add fixture"], check=True)
+        before = subprocess.run(["git", "-C", str(self.root), "status", "--porcelain"], capture_output=True, check=True).stdout
+        content = (self.root / "config.py").read_bytes()
+        self.assertIn("Add fixture", self.tools.execute("git_log", {})["history"])
+        self.tools.execute("list_files", {})
+        self.tools.execute("read_file", {"path": "config.py"})
+        self.tools.execute("search_code", {"pattern": "password"})
+        after = subprocess.run(["git", "-C", str(self.root), "status", "--porcelain"], capture_output=True, check=True).stdout
+        self.assertEqual(before, after)
+        self.assertEqual((self.root / "config.py").read_bytes(), content)
+
 
 if __name__ == "__main__":
     unittest.main()

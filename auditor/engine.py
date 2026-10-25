@@ -1,0 +1,103 @@
+"""Our explicit observe/reason/select/execute/interpret/report control loop."""
+
+import json
+from pathlib import Path
+
+from auditor.prompts import SYSTEM_PROMPT
+from auditor.report import REPORT_SCHEMA, validate_report
+from auditor.repository import AuditError
+from auditor.safety import sanitize
+
+
+def function(name, description, properties=None, required=()):
+    properties = dict(properties or {})
+    properties["reason"] = {"type": "string", "description": "Brief observation and purpose motivating this call"}
+    return {"type": "function", "function": {"name": name, "description": description,
+        "parameters": {"type": "object", "properties": properties,
+                       "required": [*required, "reason"], "additionalProperties": False}}}
+
+
+TOOL_DEFINITIONS = [
+    function("list_files", "List tracked repository files; reports whether listing is complete."),
+    function("read_file", "Read numbered text lines. Follow next_line to inspect more content.", {
+        "path": {"type": "string"}, "start_line": {"type": "integer", "minimum": 1},
+        "end_line": {"type": "integer", "minimum": 1}}, ("path",)),
+    function("search_code", "Search tracked text files using a case-insensitive LITERAL substring (not regex).", {
+        "pattern": {"type": "string"}}, ("pattern",)),
+    function("git_log", "Inspect latest 30 commit subjects from a shallow clone of up to 100 commits."),
+    function("submit_report", "Finish after interpreting prior results; report exact evidence-backed findings.", {
+        "report": REPORT_SCHEMA}, ("report",)),
+]
+
+
+class Trace:
+    def __init__(self, path: Path):
+        self.path = path
+        self.stream = None
+
+    def __enter__(self):
+        self.stream = self.path.open("w", encoding="utf-8")
+        return self
+
+    def write(self, event: str, **data):
+        self.stream.write(json.dumps(sanitize({"event": event, **data}), ensure_ascii=True) + "\n")
+        self.stream.flush()
+
+    def __exit__(self, *args):
+        self.stream.close()
+
+
+def run_agent(repository, tools, provider, trace, max_rounds=30):
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Audit {repository}. You have at most {max_rounds} model turns. Investigate now."},
+    ]
+    successful_inspections = 0
+    for turn in range(1, max_rounds + 1):
+        message = provider.complete(messages, TOOL_DEFINITIONS)
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            raise AuditError("LLM returned an invalid assistant message")
+        calls = message.get("tool_calls") or []
+        if not isinstance(calls, list) or len(calls) > 8:
+            raise AuditError("LLM returned an invalid or excessive batch of tool calls")
+        trace.write("decision", turn=turn, message=message)
+        messages.append(message)
+        if not calls:
+            messages.append({"role": "user", "content": "Continue investigating with tools or finish using submit_report. Plain text is not a completed inspection."})
+            continue
+        for call in calls:
+            try:
+                name = call["function"]["name"]
+                call_id = call["id"]
+                arguments = json.loads(call["function"]["arguments"])
+                if not isinstance(arguments, dict):
+                    raise ValueError("Tool arguments must be a JSON object")
+                reason = arguments.pop("reason", "")
+                if not isinstance(reason, str) or not reason.strip():
+                    raise ValueError("Each tool call must explain its purpose in reason")
+                if name == "submit_report":
+                    if len(calls) != 1:
+                        raise AuditError("submit_report must be the only call in its turn; interpret inspection outputs first")
+                    if not successful_inspections:
+                        raise AuditError("An actual inspection is required before submitting a report")
+                    if set(arguments) != {"report"}:
+                        raise AuditError("submit_report expects exactly report and reason")
+                    report = validate_report(arguments["report"], repository, tools)
+                    trace.write("completed", turn=turn, reason=reason, report=report)
+                    return report
+                result = tools.execute(name, arguments)
+                if "error" not in result:
+                    successful_inspections += 1
+            except (KeyError, TypeError) as exc:
+                raise AuditError("LLM returned a malformed tool call") from exc
+            except (ValueError, AuditError) as exc:
+                result = {"error": str(exc)}
+                name = call.get("function", {}).get("name", "invalid")
+                call_id = call.get("id")
+                if not call_id:
+                    raise AuditError("LLM tool call has no ID") from exc
+            result = sanitize(result)
+            trace.write("tool_result", turn=turn, name=name, call_id=call_id, result=result)
+            messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result)})
+        messages.append({"role": "user", "content": f"Interpret the tool results and select your next action. {max_rounds - turn} model turns remain."})
+    raise AuditError("Agent exhausted its model-turn budget without a validated report; inspect the trace or increase AGENT_MAX_ROUNDS")
